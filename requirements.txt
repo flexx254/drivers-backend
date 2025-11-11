@@ -8,3 +8,4 @@ cloudinary
 sendgrid
 Pillow
 Werkzeug
+gunicorn
