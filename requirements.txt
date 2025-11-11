@@ -1,0 +1,10 @@
+Flask
+flask-cors
+flask-limiter
+python-dotenv
+supabase
+bcrypt
+cloudinary
+sendgrid
+Pillow
+Werkzeug
