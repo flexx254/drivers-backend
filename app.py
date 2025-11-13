@@ -291,6 +291,18 @@ def check_cloudinary():
 # -----------------------------
 # RUN
 # -----------------------------
+
+@app.route("/test_upload")
+def test_upload():
+    try:
+        result = cloudinary.uploader.upload(
+            "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+            folder="drivers/test"
+        )
+        return jsonify({"success": True, "url": result["secure_url"]})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
