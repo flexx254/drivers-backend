@@ -282,7 +282,12 @@ def verify_otp():
     supabase.table("drivers").update({"verified": True}).eq("email", email).execute()
 
     return jsonify({"message": "OTP verified"}), 200
-
+@app.route("/check_cloudinary")
+def check_cloudinary():
+    return jsonify({
+        "cloud_name": cloudinary.config().cloud_name,
+        "api_key": cloudinary.config().api_key
+    })
 # -----------------------------
 # RUN
 # -----------------------------
