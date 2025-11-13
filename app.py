@@ -64,11 +64,10 @@ app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret")
 CORS(app)
 
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
     default_limits=["10 per minute", "200 per day"]
 )
-
+limiter.init_app(app)
 # -----------------------------
 # ALLOWED FILES
 # -----------------------------
