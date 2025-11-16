@@ -34,6 +34,23 @@ load_dotenv()
 app = Flask(__name__)
 
 # -----------------------------
+# APP CONFIG
+# -----------------------------
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024   # 20MB upload limit
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret")
+
+CORS(app)
+
+# -----------------------------
+# RATE LIMITER
+# -----------------------------
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["10 per minute", "200 per day"]
+)
+limiter.init_app(app)
+
+# -----------------------------
 # SUPABASE CONFIG
 # -----------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -55,19 +72,6 @@ cloudinary.config(
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 EMAIL_FROM = os.getenv("EMAIL_FROM")
 
-# -----------------------------
-# APP CONFIG
-# -----------------------------
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20MB upload limit
-app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret")
-
-CORS(app)
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["10 per minute", "200 per day"]
-)
-limiter.init_app(app)
 # -----------------------------
 # ALLOWED FILES
 # -----------------------------
@@ -124,186 +128,53 @@ def generate_driver_id():
 def resize_image(file: FileStorage, max_size=(1024, 1024)):
     try:
         img = Image.open(file)
-        img.thumbnail(max_size)  # Resize while maintaining aspect ratio
+        img.thumbnail(max_size)
         buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=85)  # Compress to JPEG
+        img.save(buffer, format="JPEG", quality=85)
         buffer.seek(0)
         return buffer
     except Exception as e:
         raise ValueError(f"Image processing failed: {str(e)}")
 
-# -----------------------------
-# ROUTES
-# -----------------------------
-@app.route("/")
-def home():
-    return jsonify({"message": "D4D Flask Backend (Supabase + Cloudinary + SendGrid + Pillow Ready)"})
-
-# -----------------------------
-# DRIVER SIGNUP
-# -----------------------------
-@app.route("/signup", methods=["POST"])
-@limiter.limit("5 per minute")
-def signup():
-    full_name = request.form.get("full_name")
-    email = request.form.get("email")
-    password = request.form.get("password")
-    psv_expiry = request.form.get("psv_expiry")
-    car_plate = request.form.get("car_plate")
-    sacco = request.form.get("sacco")
-
-    profile_photo = request.files.get("profile_photo")
-    psv_badge = request.files.get("psv_badge")
-
-    allowed_saccos = ["OOD", "UOD", "NONE"]
-
-    # Required fields
-    if not all([full_name, email, password, psv_expiry, car_plate, sacco, profile_photo, psv_badge]):
-        return jsonify({"error": "All fields are required"}), 400
-
-    if sacco not in allowed_saccos:
-        return jsonify({"error": "Invalid sacco"}), 400
-
-    clean_plate = normalize_plate(car_plate)
-    if not valid_plate(clean_plate):
-        return jsonify({"error": "Invalid car plate"}), 400
-
-    ok, msg = check_password_strength(password)
-    if not ok:
-        return jsonify({"error": msg}), 400
-
-    for f, name in [(profile_photo, "profile_photo"), (psv_badge, "psv_badge")]:
-        if not allowed_file(f):
-            return jsonify({"error": f"{name} must be jpg/jpeg/png"}), 400
-
-    # Check duplicates in Supabase
-    existing_driver = supabase.table("drivers").select("*").or_(f"email.eq.{email},car_plate.eq.{clean_plate}").execute()
-    if existing_driver.data:
-        return jsonify({"error": "Email or car plate already registered"}), 400
-
-    # Resize images using Pillow
-    try:
-        resized_profile = resize_image(profile_photo)
-        resized_badge = resize_image(psv_badge)
-        up_profile = cloudinary.uploader.upload(resized_profile, folder="drivers/profile")
-        profile_url = up_profile["secure_url"]
-        up_badge = cloudinary.uploader.upload(resized_badge, folder="drivers/psv")
-        badge_url = up_badge["secure_url"]
-    except Exception as e:
-        return jsonify({"error": "Image upload failed", "details": str(e)}), 500
-
-    # Insert into Supabase
-    driver_id = generate_driver_id()
-    supabase.table("drivers").insert({
-        "driver_id": driver_id,
-        "full_name": full_name,
-        "email": email,
-        "password_hash": hash_password(password),
-        "car_plate": clean_plate,
-        "sacco": sacco,
-        "profile_url": profile_url,
-        "psv_badge_url": badge_url,
-        "psv_expiry": parse_date(psv_expiry).isoformat(),
-        "verified": False,
-        "created_at": datetime.utcnow().isoformat()
-    }).execute()
-
-    return jsonify({
-        "message": "Signup successful",
-        "driver_id": driver_id,
-        "driver": {
-            "name": full_name,
-            "email": email,
-            "car_plate": clean_plate,
-            "sacco": sacco,
-            "profile_photo": profile_url,
-            "psv_badge": badge_url,
-            "psv_expiry": parse_date(psv_expiry).isoformat(),
-        }
-    }), 201
-
-# -----------------------------
-# SEND OTP VIA EMAIL
-# -----------------------------
-@app.route("/send_otp", methods=["POST"])
+# ============================================================
+# ROUTE: REGISTER NAME ONLY (TABLE: dere)
+# ============================================================
+@app.route("/register_name", methods=["POST"])
 @limiter.limit("3 per minute")
-def send_otp():
-    email = request.json.get("email")
-    if not email:
-        return jsonify({"error": "Email required"}), 400
+def register_name():
+    data = request.get_json()
 
-    code = str(random.randint(100000, 999999))
-    expires = datetime.utcnow() + timedelta(minutes=5)
+    if not data or "full_name" not in data:
+        return jsonify({"error": "full_name is required"}), 400
 
-    # Save OTP in Supabase
-    supabase.table("otp").insert({
-        "email": email,
-        "code": code,
-        "expires_at": expires.isoformat(),
-        "used": False
-    }).execute()
+    full_name = data["full_name"].strip()
+    name_parts = full_name.split()
 
-    # Send email via SendGrid
+    # Validate exactly 3 names
+    if len(name_parts) != 3:
+        return jsonify({"error": "Full name must contain exactly three names"}), 400
+
     try:
-        message = Mail(
-            from_email=EMAIL_FROM,
-            to_emails=email,
-            subject="Your OTP Code",
-            plain_text_content=f"Your OTP code is: {code}. It expires in 5 minutes."
-        )
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        sg.send(message)
+        response = supabase.table("dere").insert({
+            "full_name": full_name
+        }).execute()
+
+        return jsonify({
+            "message": "Name registered successfully",
+            "saved_name": full_name,
+            "supabase_response": response.data
+        }), 201
+
     except Exception as e:
-        return jsonify({"error": "Failed to send OTP email", "details": str(e)}), 500
+        return jsonify({
+            "error": "Failed to save name",
+            "details": str(e)
+        }), 500
 
-    return jsonify({"message": "OTP sent", "expires": expires.isoformat()})
 
-# -----------------------------
-# VERIFY OTP
-# -----------------------------
-@app.route("/verify_otp", methods=["POST"])
-@limiter.limit("10 per minute")
-def verify_otp():
-    email = request.json.get("email")
-    code = request.json.get("code")
-    if not email or not code:
-        return jsonify({"error": "email & code required"}), 400
-
-    response = supabase.table("otp").select("*").eq("email", email).eq("code", code).eq("used", False).execute()
-    otp = response.data[0] if response.data else None
-
-    if not otp:
-        return jsonify({"error": "Invalid OTP"}), 400
-
-    if datetime.utcnow() > datetime.fromisoformat(otp["expires_at"]):
-        return jsonify({"error": "OTP expired"}), 400
-
-    supabase.table("otp").update({"used": True}).eq("id", otp["id"]).execute()
-    supabase.table("drivers").update({"verified": True}).eq("email", email).execute()
-
-    return jsonify({"message": "OTP verified"}), 200
-@app.route("/check_cloudinary")
-def check_cloudinary():
-    return jsonify({
-        "cloud_name": cloudinary.config().cloud_name,
-        "api_key": cloudinary.config().api_key
-    })
-# -----------------------------
-# RUN
-# -----------------------------
-
-@app.route("/test_upload")
-def test_upload():
-    try:
-        result = cloudinary.uploader.upload(
-            "https://res.cloudinary.com/demo/image/upload/sample.jpg",
-            folder="drivers/test"
-        )
-        return jsonify({"success": True, "url": result["secure_url"]})
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
+# ============================================================
+# RUN APP
+# ============================================================
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
