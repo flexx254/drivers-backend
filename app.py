@@ -6,6 +6,7 @@ import cloudinary
 import cloudinary.uploader
 from datetime import datetime, timedelta
 from io import BytesIO
+import logging
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -13,23 +14,25 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.datastructures import FileStorage
 from dotenv import load_dotenv
+
+# supabase client (ensure package installed in your env)
 from supabase import create_client, Client
 
-# -----------------------------
-# SENDGRID IMPORTS
-# -----------------------------
+# sendgrid
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
-# -----------------------------
-# PILLOW IMPORT
-# -----------------------------
+# pillow
 from PIL import Image
 
 # -----------------------------
 # LOAD ENV
 # -----------------------------
 load_dotenv()
+
+# ---------- logging ----------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -39,6 +42,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024   # 20MB upload limit
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret")
 
+# Allow all origins by default (you can restrict later)
 CORS(app)
 
 # -----------------------------
@@ -55,6 +59,9 @@ limiter.init_app(app)
 # -----------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logger.warning("Supabase URL or KEY missing from env (SUPABASE_URL / SUPABASE_KEY).")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -----------------------------
@@ -79,7 +86,7 @@ ALLOWED_EXT = {"jpg", "jpeg", "png"}
 ALLOWED_MIME = {"image/png", "image/jpeg"}
 
 def allowed_file(file: FileStorage):
-    if not file or not file.filename:
+    if not file or not getattr(file, "filename", None):
         return False
     ext = file.filename.rsplit(".", 1)[-1].lower()
     return ext in ALLOWED_EXT and file.mimetype in ALLOWED_MIME
@@ -127,6 +134,7 @@ def generate_driver_id():
 # -----------------------------
 def resize_image(file: FileStorage, max_size=(1024, 1024)):
     try:
+        # PIL works with file-like objects
         img = Image.open(file)
         img.thumbnail(max_size)
         buffer = BytesIO()
@@ -136,45 +144,83 @@ def resize_image(file: FileStorage, max_size=(1024, 1024)):
     except Exception as e:
         raise ValueError(f"Image processing failed: {str(e)}")
 
+# -----------------------------
+# Heartbeat route (quick check)
+# -----------------------------
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({"status": "ok", "message": "drivers-backend running"}), 200
+
 # ============================================================
 # ROUTE: REGISTER NAME ONLY (TABLE: dere)
+# - Accepts both "name" and "full_name" keys
+# - URL path uses dash to match current frontend: /register-name
 # ============================================================
-@app.route("/register_name", methods=["POST"])
+@app.route("/register-name", methods=["POST"])
 @limiter.limit("3 per minute")
 def register_name():
-    data = request.get_json()
+    # ensure JSON
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid or missing JSON body"}), 400
 
-    if not data or "full_name" not in data:
-        return jsonify({"error": "full_name is required"}), 400
+    # support both keys (frontend currently sends { name })
+    full_name = None
+    if "full_name" in data and isinstance(data["full_name"], str):
+        full_name = data["full_name"].strip()
+    elif "name" in data and isinstance(data["name"], str):
+        full_name = data["name"].strip()
+    else:
+        return jsonify({"error": "Provide 'full_name' or 'name' in the JSON body"}), 400
 
-    full_name = data["full_name"].strip()
-    name_parts = full_name.split()
-
-    # Validate exactly 3 names
+    name_parts = [p for p in full_name.split() if p]
     if len(name_parts) != 3:
         return jsonify({"error": "Full name must contain exactly three names"}), 400
 
     try:
-        response = supabase.table("dere").insert({
-            "full_name": full_name
-        }).execute()
-
+        # insert into supabase table 'dere'
+        response = supabase.table("dere").insert({"full_name": full_name}).execute()
+        # response shape varies by supabase client; attempt to respond sensibly
+        saved = getattr(response, "data", None)
         return jsonify({
             "message": "Name registered successfully",
             "saved_name": full_name,
-            "supabase_response": response.data
+            "supabase_response": saved
         }), 201
 
     except Exception as e:
+        logger.exception("Error saving name to supabase")
         return jsonify({
             "error": "Failed to save name",
             "details": str(e)
         }), 500
 
+# -----------------------------
+# JSON error handlers to avoid HTML pages
+# -----------------------------
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Not found", "path": request.path}), 404
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return jsonify({"error": "Method not allowed", "allowed": list(request.url_rule.methods) if request.url_rule else None}), 405
+
+@app.errorhandler(413)
+def payload_too_large(e):
+    return jsonify({"error": "Payload too large"}), 413
+
+@app.errorhandler(500)
+def internal_error(e):
+    # log server error
+    logger.exception("Internal server error")
+    return jsonify({"error": "Internal server error"}), 500
 
 # ============================================================
 # RUN APP
 # ============================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # set debug False on production
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
