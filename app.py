@@ -156,44 +156,53 @@ def index():
 # - Accepts both "name" and "full_name" keys
 # - URL path uses dash to match current frontend: /register-name
 # ============================================================
-@app.route("/register-name", methods=["POST"])
-@limiter.limit("3 per minute")
-def register_name():
-    # ensure JSON
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "Invalid or missing JSON body"}), 400
+@a
 
-    # support both keys (frontend currently sends { name })
-    full_name = None
-    if "full_name" in data and isinstance(data["full_name"], str):
-        full_name = data["full_name"].strip()
-    elif "name" in data and isinstance(data["name"], str):
-        full_name = data["name"].strip()
-    else:
-        return jsonify({"error": "Provide 'full_name' or 'name' in the JSON body"}), 400
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
 
-    name_parts = [p for p in full_name.split() if p]
-    if len(name_parts) != 3:
-        return jsonify({"error": "Full name must contain exactly three names"}), 400
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+    confirm = data.get("confirm", "")
 
-    try:
-        # insert into supabase table 'dere'
-        response = supabase.table("dere").insert({"full_name": full_name}).execute()
-        # response shape varies by supabase client; attempt to respond sensibly
-        saved = getattr(response, "data", None)
-        return jsonify({
-            "message": "Name registered successfully",
-            "saved_name": full_name,
-            "supabase_response": saved
-        }), 201
+    # Check empty fields
+    if not name:
+        return jsonify({"success": False, "error": "Name is required"}), 400
+    if not password:
+        return jsonify({"success": False, "error": "Password is required"}), 400
+    if not confirm:
+        return jsonify({"success": False, "error": "Confirm password is required"}), 400
 
-    except Exception as e:
-        logger.exception("Error saving name to supabase")
-        return jsonify({
-            "error": "Failed to save name",
-            "details": str(e)
-        }), 500
+    # Confirm password
+    if password != confirm:
+        return jsonify({"success": False, "error": "Passwords do not match"}), 400
+
+    # Strong password validation
+    if len(password) < 8:
+        return jsonify({"success": False, "error": "Password must be at least 8 characters"}), 400
+    if not re.search(r"[A-Z]", password):
+        return jsonify({"success": False, "error": "Password must include an uppercase letter"}), 400
+    if not re.search(r"[a-z]", password):
+        return jsonify({"success": False, "error": "Password must include a lowercase letter"}), 400
+    if not re.search(r"[0-9]", password):
+        return jsonify({"success": False, "error": "Password must include a digit"}), 400
+    if not re.search(r"[!@#$%^&*()_+\-=]", password):
+        return jsonify({"success": False, "error": "Password must include a special character"}), 400
+
+    # Everything OK → Hash password
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    # Insert into Supabase (or your database)
+    supabase.table("dere").insert({
+        "name": name,
+        "password": hashed
+    }).execute()
+
+    return jsonify({
+        "success": True,
+        "message": "Partly registered successfully"
+    }), 200
 
 # -----------------------------
 # JSON error handlers to avoid HTML pages
