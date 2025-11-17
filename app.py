@@ -156,7 +156,7 @@ def index():
 # - Accepts both "name" and "full_name" keys
 # - URL path uses dash to match current frontend: /register-name
 # ============================================================
-@a
+
 
 @app.route("/register", methods=["POST"])
 def register():
