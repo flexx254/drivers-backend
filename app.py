@@ -7,6 +7,7 @@ import cloudinary.uploader
 from datetime import datetime, timedelta
 from io import BytesIO
 import logging
+import json
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -17,10 +18,6 @@ from dotenv import load_dotenv
 
 # supabase client (ensure package installed in your env)
 from supabase import create_client, Client
-
-# sendgrid
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 
 # pillow
 from PIL import Image
@@ -62,22 +59,22 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
     logger.warning("Supabase URL or KEY missing from env (SUPABASE_URL / SUPABASE_KEY).")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# create client (may raise if env invalid) — catch exceptions
+supabase: Client = None
+try:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    logger.exception("Failed to create Supabase client: %s", str(e))
+    # keep supabase as None; routes will return helpful error if used
 
 # -----------------------------
-# CLOUDINARY CONFIG
+# CLOUDINARY CONFIG (optional)
 # -----------------------------
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
-
-# -----------------------------
-# SENDGRID CONFIG
-# -----------------------------
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-EMAIL_FROM = os.getenv("EMAIL_FROM")
 
 # -----------------------------
 # ALLOWED FILES
@@ -153,18 +150,18 @@ def index():
 
 # ============================================================
 # ROUTE: REGISTER NAME ONLY (TABLE: dere)
-# - Accepts both "name" and "full_name" keys
-# - URL path uses dash to match current frontend: /register-name
 # ============================================================
-
-
 @app.route("/register", methods=["POST"])
 def register():
-    data = request.get_json()
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except Exception as e:
+        logger.exception("Failed to parse JSON body: %s", str(e))
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
 
-    name = data.get("name", "").strip()
-    password = data.get("password", "")
-    confirm = data.get("confirm", "")
+    name = (data.get("name") or "").strip()
+    password = data.get("password") or ""
+    confirm = data.get("confirm") or ""
 
     # Check empty fields
     if not name:
@@ -178,31 +175,60 @@ def register():
     if password != confirm:
         return jsonify({"success": False, "error": "Passwords do not match"}), 400
 
-    # Strong password validation
-    if len(password) < 8:
-        return jsonify({"success": False, "error": "Password must be at least 8 characters"}), 400
-    if not re.search(r"[A-Z]", password):
-        return jsonify({"success": False, "error": "Password must include an uppercase letter"}), 400
-    if not re.search(r"[a-z]", password):
-        return jsonify({"success": False, "error": "Password must include a lowercase letter"}), 400
-    if not re.search(r"[0-9]", password):
-        return jsonify({"success": False, "error": "Password must include a digit"}), 400
-    if not re.search(r"[!@#$%^&*()_+\-=]", password):
-        return jsonify({"success": False, "error": "Password must include a special character"}), 400
+    # Strong password validation (same rules as frontend + lowercase)
+    ok, msg = check_password_strength(password)
+    if not ok:
+        return jsonify({"success": False, "error": msg}), 400
 
-    # Everything OK → Hash password
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    # Hash password
+    try:
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    except Exception as e:
+        logger.exception("Password hashing failed: %s", str(e))
+        return jsonify({"success": False, "error": "Server error hashing password"}), 500
 
-    # Insert into Supabase (or your database)
-    supabase.table("dere").insert({
-        "name": name,
-        "password": hashed
-    }).execute()
+    # Ensure supabase client exists
+    if supabase is None:
+        logger.error("Supabase client is not initialized.")
+        return jsonify({"success": False, "error": "Server misconfiguration: database client missing"}), 500
 
-    return jsonify({
-        "success": True,
-        "message": "Partly registered successfully"
-    }), 200
+    # Insert into Supabase (or your database) with error checks
+    try:
+        response = supabase.table("dere").insert({
+            "name": name,
+            "password": hashed
+        }).execute()
+
+        # response format may vary; try to detect error
+        # new supabase-py returns dict-like with 'data' and 'error'
+        resp_error = None
+        resp_data = None
+        try:
+            # if response is object with .error/.data
+            resp_error = getattr(response, "error", None)
+            resp_data = getattr(response, "data", None)
+        except Exception:
+            pass
+        # If it's a dict
+        if isinstance(response, dict):
+            resp_error = response.get("error") or resp_error
+            resp_data = response.get("data") or resp_data
+
+        # If there's an error, log and return it
+        if resp_error:
+            logger.error("Supabase insert error: %s", resp_error)
+            # avoid leaking internal DB details to client, but pass concise message
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
+
+        # Good insertion
+        logger.info("Inserted into dere table for name=%s", name)
+        return jsonify({"success": True, "message": "Partly registered successfully"}), 200
+
+    except Exception as e:
+        # Log full exception for Render logs
+        logger.exception("Unexpected error during supabase insert: %s", str(e))
+        # Helpful JSON to frontend (do not include stack traces)
+        return jsonify({"success": False, "error": "Internal server error during registration"}), 500
 
 # -----------------------------
 # JSON error handlers to avoid HTML pages
@@ -213,7 +239,11 @@ def not_found(e):
 
 @app.errorhandler(405)
 def method_not_allowed(e):
-    return jsonify({"error": "Method not allowed", "allowed": list(request.url_rule.methods) if request.url_rule else None}), 405
+    try:
+        allowed = list(request.url_rule.methods) if request.url_rule else None
+    except Exception:
+        allowed = None
+    return jsonify({"error": "Method not allowed", "allowed": allowed}), 405
 
 @app.errorhandler(413)
 def payload_too_large(e):
@@ -222,7 +252,7 @@ def payload_too_large(e):
 @app.errorhandler(500)
 def internal_error(e):
     # log server error
-    logger.exception("Internal server error")
+    logger.exception("Internal server error (global handler): %s", str(e))
     return jsonify({"error": "Internal server error"}), 500
 
 # ============================================================
@@ -230,6 +260,5 @@ def internal_error(e):
 # ============================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # set debug False on production
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(host="0.0.0.0", port=port, debug=debug_mode)
