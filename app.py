@@ -195,7 +195,7 @@ def register():
     # Insert into Supabase (or your database) with error checks
     try:
         response = supabase.table("dere").insert({
-            "name": name,
+            "name": full_name,
             "password": hashed
         }).execute()
 
