@@ -302,6 +302,75 @@ def register():
         logger.exception("Unexpected supabase insert error: %s", str(e))
         return jsonify({"success": False, "error": "Internal server error during registration"}), 500
 
+
+
+# ============================================================
+# ROUTE: SEND CONTINUE REGISTRATION EMAIL
+# ============================================================
+@app.route("/continue-reg", methods=["POST"])
+def continue_reg():
+    if supabase is None:
+        return jsonify({"success": False, "error": "Database client missing"}), 500
+
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except:
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+
+    # FIND USER
+    try:
+        lookup = supabase.table("dere").select("*").eq("email", email).single().execute()
+    except Exception:
+        return jsonify({"success": False, "error": "Database lookup failed"}), 500
+
+    if not lookup.data:
+        return jsonify({"success": False, "error": "Email not found"}), 404
+
+    # CREATE TOKEN
+    token = str(random.randint(10000000, 99999999))
+
+    # UPDATE USER WITH TOKEN
+    try:
+        supabase.table("dere").update({
+            "continue_token": token
+        }).eq("email", email).execute()
+    except Exception:
+        return jsonify({"success": False, "error": "Database update failed"}), 500
+
+    # EMAIL CONTENT
+    continue_url = f"https://drivers-backend-4spp.onrender.com/continue-form?token={token}"
+
+    try:
+        sg = sendgrid.SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
+        message = Mail(
+            from_email=os.getenv("FROM_EMAIL"),
+            to_emails=email,
+            subject="Continue Your Registration",
+            html_content=f"""
+                <p>Hello,</p>
+                <p>Click the button below to continue your registration:</p>
+                <a href="{continue_url}" 
+                style="background:#1b8f2a;color:white;padding:12px 18px;text-decoration:none;border-radius:6px;">
+                Continue Registration
+                </a>
+            """
+        )
+        sg.send(message)
+    except Exception as e:
+        logger.exception("Email sending failed: %s", str(e))
+        return jsonify({"success": False, "error": "Failed to send email"}), 500
+
+    return jsonify({
+        "success": True,
+        "message": "Email sent. Check your inbox to continue registration.",
+        "token": token
+    }), 200
+
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
