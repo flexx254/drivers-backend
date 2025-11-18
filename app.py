@@ -151,7 +151,7 @@ def index():
 # ============================================================
 # ROUTE: REGISTER NAME ONLY (TABLE: dere)
 # ============================================================
-@app.route("/reg", methods=["POST"])
+@app.route("/null", methods=["POST"])
 def register():
     try:
         data = request.get_json(force=True, silent=False) or {}
