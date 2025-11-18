@@ -230,6 +230,78 @@ def register():
         # Helpful JSON to frontend (do not include stack traces)
         return jsonify({"success": False, "error": "Internal server error during registration"}), 500
 
+
+@app.route("/register", methods=["POST"])
+def register():
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except Exception as e:
+        logger.exception("Failed to parse JSON body: %s", str(e))
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    confirm = data.get("confirm") or ""
+
+    # REQUIRED FIELDS
+    if not name:
+        return jsonify({"success": False, "error": "Name is required"}), 400
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+
+    # EMAIL REGEX
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"success": False, "error": "Invalid email address"}), 400
+
+    if not password:
+        return jsonify({"success": False, "error": "Password is required"}), 400
+    if not confirm:
+        return jsonify({"success": False, "error": "Confirm password is required"}), 400
+
+    if password != confirm:
+        return jsonify({"success": False, "error": "Passwords do not match"}), 400
+
+    # PASSWORD STRENGTH
+    ok, msg = check_password_strength(password)
+    if not ok:
+        return jsonify({"success": False, "error": msg}), 400
+
+    # HASH
+    try:
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    except Exception as e:
+        logger.exception("Password hashing failed: %s", str(e))
+        return jsonify({"success": False, "error": "Server error hashing password"}), 500
+
+    # Check supabase init
+    if supabase is None:
+        return jsonify({"success": False, "error": "Database client missing"}), 500
+
+    # INSERT INTO TABLE dere
+    try:
+        response = supabase.table("dere").insert({
+            "full_name": name,
+            "email": email,
+            "password": hashed
+        }).execute()
+
+        # Check for error
+        resp_error = getattr(response, "error", None)
+
+        if resp_error:
+            logger.error("Supabase insert error: %s", resp_error)
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Registration successful. Check your email to continue."
+        }), 200
+
+    except Exception as e:
+        logger.exception("Unexpected supabase insert error: %s", str(e))
+        return jsonify({"success": False, "error": "Internal server error during registration"}), 500
+
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
