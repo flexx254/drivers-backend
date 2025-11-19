@@ -270,7 +270,7 @@ def continue_reg():
     try:
         sg = sendgrid.SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
         message = Mail(
-            from_email=os.getenv("FROM_EMAIL"),
+            from_email=os.getenv("EMAIL_FROM"),
             to_emails=email,
             subject="Continue Your Registration",
             html_content=f"""
