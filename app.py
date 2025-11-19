@@ -293,6 +293,85 @@ def continue_reg():
         "token": token
     }), 200
 
+
+
+
+
+
+@app.route("/upload-documents", methods=["POST"])
+def upload_documents():
+    try:
+        # -----------------------------
+        # 1. Read form fields
+        # -----------------------------
+        token = request.form.get("token")
+        id_number = request.form.get("id_number")
+
+        license_exp = request.form.get("license_expiry")
+        psv_exp = request.form.get("psv_badge_expiry")
+        gc_exp = request.form.get("good_conduct_expiry")
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+
+        # -----------------------------
+        # 2. Find user by token
+        # -----------------------------
+        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
+
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+
+        email = lookup.data["email"]
+
+        # -----------------------------
+        # 3. Upload files to Cloudinary
+        # -----------------------------
+        def upload_file(file):
+            if not file:
+                return None
+            upload = cloudinary.uploader.upload(file, folder="driver_docs")
+            return upload.get("secure_url")
+
+        profile_file = request.files.get("profile_pic")
+        license_file = request.files.get("license")
+        psv_file = request.files.get("psv_badge")
+        good_conduct_file = request.files.get("good_conduct")
+
+        profile_url = upload_file(profile_file)
+        license_url = upload_file(license_file)
+        psv_url = upload_file(psv_file)
+        gc_url = upload_file(good_conduct_file)
+
+        # -----------------------------
+        # 4. Build update fields
+        # -----------------------------
+        update_data = {
+            "id_number": id_number,
+            "license_expiry": license_exp,
+            "psv_badge_expiry": psv_exp,
+            "good_conduct_expiry": gc_exp,
+        }
+
+        if profile_url: update_data["profile_pic_url"] = profile_url
+        if license_url: update_data["license_url"] = license_url
+        if psv_url: update_data["psv_badge_url"] = psv_url
+        if gc_url: update_data["good_conduct_url"] = gc_url
+
+        # -----------------------------
+        # 5. Save to database
+        # -----------------------------
+        supabase.table("dere").update(update_data).eq("email", email).execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Documents uploaded successfully."
+        })
+
+    except Exception as e:
+        logger.exception("Document upload error: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
