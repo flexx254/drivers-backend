@@ -265,7 +265,7 @@ def continue_reg():
         return jsonify({"success": False, "error": "Database update failed"}), 500
 
     # EMAIL CONTENT
-    continue_url = f"https://drivers-backend-4spp.onrender.com/continue-form?token={token}"
+    continue_url = f"https://flexx254.github.io/drivers-frontend/continue-form.html?token={token}"
 
     try:
         sg = sendgrid.SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
