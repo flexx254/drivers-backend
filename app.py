@@ -423,6 +423,8 @@ def update_id():
         logger.exception("ID update error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+
 @app.route("/update-number-plate", methods=["POST"])
 def update_number_plate():
     token = request.form.get("token")
@@ -435,30 +437,36 @@ def update_number_plate():
         return jsonify({"success": False, "error": "Number plate is required"}), 400
 
     # --- NORMALIZE NUMBER PLATE ---
-    # Remove all spaces
-    normalized = plate.replace(" ", "")
-    # Convert to uppercase
-    normalized = normalized.upper()
+    normalized = normalize_plate(plate)
+
+    if not valid_plate(normalized):
+        return jsonify({"success": False, "error": "Invalid number plate format"}), 400
 
     try:
         # Find user by token
         user = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-
         if user.error or not user.data:
             return jsonify({"success": False, "error": "Invalid token"}), 400
 
-        # Check duplicate number plate (case-insensitive)
-        duplicate = supabase.table("dere").select("*").eq("number_plate", normalized).execute()
+        # Check duplicate (exclude current user)
+        duplicate = supabase.table("dere").select("*")\
+            .eq("number_plate", normalized)\
+            .neq("continue_token", token).execute()
         
         if duplicate.data:
             return jsonify({"success": False, "error": "Number plate already exists"}), 400
 
         # Update number plate
-        supabase.table("dere").update({"number_plate": normalized}).eq("token", token).execute()
+        update_resp = supabase.table("dere").update({"number_plate": normalized})\
+            .eq("continue_token", token).execute()
+
+        if getattr(update_resp, "error", None):
+            return jsonify({"success": False, "error": str(update_resp.error)}), 500
 
         return jsonify({"success": True, "number_plate": normalized})
 
     except Exception as e:
+        logger.exception("Number plate update error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
