@@ -442,7 +442,7 @@ def update_number_plate():
 
     try:
         # Find user by token
-        user = supabase.table("dere").select("*").eq("token", token).single().execute()
+        user = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
 
         if user.error or not user.data:
             return jsonify({"success": False, "error": "Invalid token"}), 400
