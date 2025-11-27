@@ -422,6 +422,44 @@ def update_id():
     except Exception as e:
         logger.exception("ID update error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/update-number-plate", methods=["POST"])
+def update_number_plate():
+    token = request.form.get("token")
+    plate = request.form.get("number_plate", "").strip()
+
+    if not token:
+        return jsonify({"success": False, "error": "Missing token"}), 400
+    
+    if not plate:
+        return jsonify({"success": False, "error": "Number plate is required"}), 400
+
+    # --- NORMALIZE NUMBER PLATE ---
+    # Remove all spaces
+    normalized = plate.replace(" ", "")
+    # Convert to uppercase
+    normalized = normalized.upper()
+
+    try:
+        # Find user by token
+        user = supabase.table("dere").select("*").eq("token", token).single().execute()
+
+        if user.error or not user.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+
+        # Check duplicate number plate (case-insensitive)
+        duplicate = supabase.table("dere").select("*").eq("number_plate", normalized).execute()
+        
+        if duplicate.data:
+            return jsonify({"success": False, "error": "Number plate already exists"}), 400
+
+        # Update number plate
+        supabase.table("dere").update({"number_plate": normalized}).eq("token", token).execute()
+
+        return jsonify({"success": True, "number_plate": normalized})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": "Server error"}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
