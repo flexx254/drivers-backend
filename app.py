@@ -379,38 +379,6 @@ def upload_documents():
 # ============================================================
 # ROUTE: UPDATE ID NUMBER ONLY
 # ============================================================
-@app.route("/update-id", methods=["POST"])
-def update_id():
-    try:
-        token = request.form.get("token", "").strip()
-        id_number = request.form.get("id_number", "").strip()
-
-        if not token:
-            return jsonify({"success": False, "error": "Token is required"}), 400
-        if not id_number:
-            return jsonify({"success": False, "error": "ID number is required"}), 400
-
-        # Find user by token
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-
-        email = lookup.data["email"]
-
-        # Update ID number
-        supabase.table("dere").update({
-            "id_number": id_number
-        }).eq("email", email).execute()
-
-        return jsonify({
-            "success": True,
-            "message": "ID number saved."
-        }), 200
-
-    except Exception as e:
-        logger.exception("ID update error: %s", str(e))
-        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 # -----------------------------
 # JSON error handlers to avoid HTML pages
