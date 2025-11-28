@@ -427,43 +427,62 @@ def update_id():
 
 @app.route("/update-number-plate", methods=["POST"])
 def update_number_plate():
-    token = request.form.get("token")
-    plate = request.form.get("number_plate", "").strip()
-
-    if not token:
-        return jsonify({"success": False, "error": "Missing token"}), 400
-    
-    if not plate:
-        return jsonify({"success": False, "error": "Number plate is required"}), 400
-
-    # --- NORMALIZE NUMBER PLATE ---
-    normalized = normalize_plate(plate)
-
-    if not valid_plate(normalized):
-        return jsonify({"success": False, "error": "Invalid number plate format"}), 400
-
     try:
-        # Find user by token
-        user = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-        if user.error or not user.data:
+        token = request.form.get("token", "").strip()
+        plate = request.form.get("number_plate", "").strip()
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+
+        if not plate:
+            return jsonify({"success": False, "error": "Number plate is required"}), 400
+
+        # Normalize and validate
+        normalized = normalize_plate(plate)
+        if not valid_plate(normalized):
+            return jsonify({"success": False, "error": "Invalid number plate format"}), 400
+
+        # ------------------------------------------------------------------
+        # 1. Look up user by continue_token
+        # ------------------------------------------------------------------
+        lookup = supabase.table("dere")\
+            .select("*")\
+            .eq("continue_token", token)\
+            .single()\
+            .execute()
+
+        if not lookup.data:
             return jsonify({"success": False, "error": "Invalid token"}), 400
 
-        # Check duplicate (exclude current user)
-        duplicate = supabase.table("dere").select("*")\
+        email = lookup.data.get("email")
+
+        # ------------------------------------------------------------------
+        # 2. Check for duplicate number plate (exclude this user)
+        # ------------------------------------------------------------------
+        duplicate = supabase.table("dere")\
+            .select("*")\
             .eq("number_plate", normalized)\
-            .neq("continue_token", token).execute()
-        
+            .neq("email", email)\
+            .execute()
+
         if duplicate.data:
             return jsonify({"success": False, "error": "Number plate already exists"}), 400
 
-        # Update number plate
-        update_resp = supabase.table("dere").update({"number_plate": normalized})\
-            .eq("continue_token", token).execute()
+        # ------------------------------------------------------------------
+        # 3. Update number plate
+        # ------------------------------------------------------------------
+        update_resp = supabase.table("dere")\
+            .update({"number_plate": normalized})\
+            .eq("continue_token", token)\
+            .execute()
 
         if getattr(update_resp, "error", None):
             return jsonify({"success": False, "error": str(update_resp.error)}), 500
 
-        return jsonify({"success": True, "number_plate": normalized})
+        return jsonify({
+            "success": True,
+            "number_plate": normalized
+        }), 200
 
     except Exception as e:
         logger.exception("Number plate update error: %s", e)
