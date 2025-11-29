@@ -487,6 +487,87 @@ def update_number_plate():
     except Exception as e:
         logger.exception("Number plate update error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
+
+# ============================================================
+# ROUTE: UPDATE PROFILE PICTURE ONLY
+# ============================================================
+@app.route("/update-profile-picture", methods=["POST"])
+def update_profile_picture():
+    try:
+        token = request.form.get("token", "").strip()
+        file = request.files.get("profile_pic")
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+
+        if not file:
+            return jsonify({"success": False, "error": "No image uploaded"}), 400
+
+        # Validate file
+        if not allowed_file(file):
+            return jsonify({"success": False, "error": "Invalid image format. Use JPG or PNG."}), 400
+
+        # ----------------------------------------------------------
+        # 1. Find user by token
+        # ----------------------------------------------------------
+        lookup = supabase.table("dere")\
+            .select("*")\
+            .eq("continue_token", token)\
+            .single()\
+            .execute()
+
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+
+        email = lookup.data.get("email")
+
+        # ----------------------------------------------------------
+        # 2. Resize image using Pillow before upload
+        # ----------------------------------------------------------
+        try:
+            resized_buffer = resize_image(file)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Image processing failed: {str(e)}"}), 500
+
+        # ----------------------------------------------------------
+        # 3. Upload to Cloudinary
+        # ----------------------------------------------------------
+        try:
+            upload_resp = cloudinary.uploader.upload(
+                resized_buffer,
+                folder="driver_profile"
+            )
+            image_url = upload_resp.get("secure_url")
+        except Exception as e:
+            logger.exception("Cloudinary upload error: %s", str(e))
+            return jsonify({"success": False, "error": "Failed to upload image"}), 500
+
+        if not image_url:
+            return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
+
+        # ----------------------------------------------------------
+        # 4. Save URL to Supabase
+        # ----------------------------------------------------------
+        update_resp = supabase.table("dere")\
+            .update({"profile_pic_url": image_url})\
+            .eq("email", email)\
+            .execute()
+
+        if getattr(update_resp, "error", None):
+            return jsonify({"success": False, "error": "Database update failed"}), 500
+
+        # ----------------------------------------------------------
+        # 5. SUCCESS
+        # ----------------------------------------------------------
+        return jsonify({
+            "success": True,
+            "profile_pic_url": image_url,
+            "message": "Profile picture uploaded successfully."
+        }), 200
+
+    except Exception as e:
+        logger.exception("Profile picture update error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
