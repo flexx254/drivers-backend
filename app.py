@@ -568,6 +568,138 @@ def update_profile_picture():
     except Exception as e:
         logger.exception("Profile picture update error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@app.route("/update-driving-license", methods=["POST"])
+def update_driving_license():
+    try:
+        token = request.form.get("token", "").strip()
+        license_expiry = request.form.get("license_expiry")
+        file = request.files.get("driving_license")
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+
+        if not file:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+        # Validate image
+        if not allowed_file(file):
+            return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
+
+        # Find user
+        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+        email = lookup.data.get("email")
+
+        # Resize image
+        resized_buffer = resize_image(file)
+
+        # Upload to Cloudinary
+        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+        license_url = upload_resp.get("secure_url")
+
+        # Update Supabase
+        supabase.table("dere").update({
+            "license_url": license_url,
+            "license_expiry": license_expiry
+        }).eq("email", email).execute()
+
+        return jsonify({
+            "success": True,
+            "license_url": license_url,
+            "message": "Driving license uploaded successfully."
+        })
+
+    except Exception as e:
+        logger.exception("Driving license upload error: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@app.route("/update-psv-badge", methods=["POST"])
+def update_psv_badge():
+    try:
+        token = request.form.get("token", "").strip()
+        psv_expiry = request.form.get("psv_badge_expiry")
+        file = request.files.get("psv_badge")
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+        if not file:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+        if not allowed_file(file):
+            return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
+
+        # Find user
+        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+        email = lookup.data.get("email")
+
+        # Resize & upload
+        resized_buffer = resize_image(file)
+        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+        psv_url = upload_resp.get("secure_url")
+
+        # Save to DB
+        supabase.table("dere").update({
+            "psv_badge_url": psv_url,
+            "psv_badge_expiry": psv_expiry
+        }).eq("email", email).execute()
+
+        return jsonify({
+            "success": True,
+            "psv_badge_url": psv_url,
+            "message": "PSV badge uploaded successfully."
+        })
+
+    except Exception as e:
+        logger.exception("PSV badge upload error: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/update-good-conduct", methods=["POST"])
+def update_good_conduct():
+    try:
+        token = request.form.get("token", "").strip()
+        gc_expiry = request.form.get("good_conduct_expiry")
+        file = request.files.get("good_conduct")
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+        if not file:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+        if not allowed_file(file):
+            return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
+
+        # Find user
+        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Invalid token"}), 400
+        email = lookup.data.get("email")
+
+        # Resize & upload
+        resized_buffer = resize_image(file)
+        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+        gc_url = upload_resp.get("secure_url")
+
+        # Save to DB
+        supabase.table("dere").update({
+            "good_conduct_url": gc_url,
+            "good_conduct_expiry": gc_expiry
+        }).eq("email", email).execute()
+
+        return jsonify({
+            "success": True,
+            "good_conduct_url": gc_url,
+            "message": "Good conduct certificate uploaded successfully."
+        })
+
+    except Exception as e:
+        logger.exception("Good conduct upload error: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
