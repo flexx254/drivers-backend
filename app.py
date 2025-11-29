@@ -495,7 +495,7 @@ def update_number_plate():
 def update_profile_picture():
     try:
         token = request.form.get("token", "").strip()
-        file = request.files.get("profile_pic")
+        file = request.files.get("profile_picture")
 
         if not token:
             return jsonify({"success": False, "error": "Missing token"}), 400
