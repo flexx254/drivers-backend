@@ -754,6 +754,31 @@ def login():
         "message": "Login successful"
     }), 200
 
+
+@app.route("/search-driver", methods=["GET"])
+def search_driver():
+    try:
+        plate = (request.args.get("number_plate") or "").strip().upper().replace(" ", "")
+        if not plate:
+            return jsonify({"success": False, "error": "Number plate is required"}), 400
+
+        # Lookup in Supabase
+        lookup = supabase.table("dere")\
+            .select("full_name, profile_pic_url, number_plate")\
+            .eq("number_plate", plate)\
+            .single()\
+            .execute()
+
+        if not lookup.data:
+            return jsonify({"success": False, "error": "Driver not found"}), 404
+
+        return jsonify({"success": True, "driver": lookup.data}), 200
+
+    except Exception as e:
+        logger.exception("Search driver error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
+                    
+
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
