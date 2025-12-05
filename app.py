@@ -700,6 +700,60 @@ def update_good_conduct():
     except Exception as e:
         logger.exception("Good conduct upload error: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
+
+# ============================================================
+# ROUTE: LOGIN
+# ============================================================
+@app.route("/login", methods=["POST"])
+def login():
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except Exception as e:
+        logger.exception("Failed to parse JSON body: %s", str(e))
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+    if not password:
+        return jsonify({"success": False, "error": "Password is required"}), 400
+
+    if supabase is None:
+        return jsonify({"success": False, "error": "Database client missing"}), 500
+
+    # Fetch user from Supabase
+    try:
+        response = supabase.table("dere").select("*").eq("email", email).single().execute()
+        user = response.data
+    except Exception as e:
+        logger.exception("Supabase lookup error: %s", str(e))
+        return jsonify({"success": False, "error": "Database lookup failed"}), 500
+
+    if not user:
+        return jsonify({"success": False, "error": "Email not found"}), 404
+
+    hashed = user.get("password")
+    if not hashed:
+        return jsonify({"success": False, "error": "User password not set"}), 500
+
+    # Check password
+    try:
+        if not bcrypt.checkpw(password.encode(), hashed.encode()):
+            return jsonify({"success": False, "error": "Incorrect password"}), 401
+    except Exception as e:
+        logger.exception("Password check error: %s", str(e))
+        return jsonify({"success": False, "error": "Password verification failed"}), 500
+
+    # Return continue token for authenticated requests
+    token = user.get("continue_token") or ""
+    return jsonify({
+        "success": True,
+        "token": token,
+        "message": "Login successful"
+    }), 200
+
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
