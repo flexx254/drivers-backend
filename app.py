@@ -777,8 +777,65 @@ def search_driver():
     except Exception as e:
         logger.exception("Search driver error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-                    
 
+
+
+
+ @app.route("/update-phone-number", methods=["POST"])
+def update_phone_number():
+    try:
+        token = request.form.get("token", "").strip()
+        phone = request.form.get("phone_number", "").strip()
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+        if not phone:
+            return jsonify({"success": False, "error": "Phone number is required"}), 400
+
+        # Update in Supabase
+        update = supabase.table("dere") \
+            .update({"phone_number": phone}) \
+            .eq("token", token) \
+            .execute()
+
+        if not update.data:
+            return jsonify({"success": False, "error": "Driver not found"}), 404
+
+        return jsonify({"success": True, "message": "Phone number updated successfully"}), 200
+
+    except Exception as e:
+        logger.exception("Phone number update error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500                   
+
+
+
+@app.route("/update-sacco", methods=["POST"])
+def update_sacco():
+    try:
+        token = request.form.get("token", "").strip()
+        sacco = request.form.get("sacco", "").strip()
+
+        if not token:
+            return jsonify({"success": False, "error": "Missing token"}), 400
+        if not sacco:
+            return jsonify({"success": False, "error": "Sacco name is required"}), 400
+
+        # Update in Supabase
+        update = supabase.table("dere") \
+            .update({"sacco": sacco}) \
+            .eq("token", token) \
+            .execute()
+
+        if not update.data:
+            return jsonify({"success": False, "error": "Driver not found"}), 404
+
+        return jsonify({"success": True, "message": "Sacco updated successfully"}), 200
+
+    except Exception as e:
+        logger.exception("Sacco update error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+        
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
