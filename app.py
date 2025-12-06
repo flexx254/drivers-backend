@@ -781,7 +781,7 @@ def search_driver():
 
 
 
- @app.route("/update-phone-number", methods=["POST"])
+@app.route("/update-phone-number", methods=["POST"])
 def update_phone_number():
     try:
         token = request.form.get("token", "").strip()
