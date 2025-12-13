@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from io import BytesIO
 import logging
 import json
-import sendgrid
-from sendgrid.helpers.mail import Mail
-
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
