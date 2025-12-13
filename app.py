@@ -25,6 +25,34 @@ from supabase import create_client, Client
 from PIL import Image
 
 # -----------------------------
+# GMAIL SMTP HELPER
+# -----------------------------
+def send_gmail_html(to_email: str, subject: str, html: str) -> bool:
+    try:
+        gmail_user = os.getenv("GMAIL_USER")
+        gmail_pass = os.getenv("GMAIL_APP_PASSWORD")
+
+        if not gmail_user or not gmail_pass:
+            raise RuntimeError("Gmail SMTP credentials missing")
+
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"Strategic Drivers <{gmail_user}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+            server.login(gmail_user, gmail_pass)
+            server.sendmail(gmail_user, to_email, msg.as_string())
+
+        return True
+
+    except Exception as e:
+        logger.exception("Gmail SMTP send failed: %s", str(e))
+        return False
+
+# -----------------------------
 # LOAD ENV
 # -----------------------------
 load_dotenv()
