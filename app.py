@@ -24,6 +24,10 @@ from supabase import create_client, Client
 # pillow
 from PIL import Image
 
+# -----------------------------
+# LOAD ENV
+# -----------------------------
+load_dotenv()
 
 
 # ---------- logging ----------
@@ -57,10 +61,6 @@ def send_gmail_html(to_email: str, subject: str, html: str) -> bool:
         logger.exception("Gmail SMTP send failed: %s", str(e))
         return False
 
-# -----------------------------
-# LOAD ENV
-# -----------------------------
-load_dotenv()
 
 
 
