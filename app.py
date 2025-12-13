@@ -244,27 +244,33 @@ def continue_reg():
 
     try:
         data = request.get_json(force=True, silent=False) or {}
-    except:
+    except Exception:
         return jsonify({"success": False, "error": "Invalid JSON body"}), 400
 
     email = (data.get("email") or "").strip().lower()
-
     if not email:
         return jsonify({"success": False, "error": "Email is required"}), 400
 
-    # FIND USER
+    # 1️⃣ FIND USER
     try:
-        lookup = supabase.table("dere").select("*").eq("email", email).single().execute()
+        lookup = (
+            supabase
+            .table("dere")
+            .select("email")
+            .eq("email", email)
+            .single()
+            .execute()
+        )
     except Exception:
         return jsonify({"success": False, "error": "Database lookup failed"}), 500
 
     if not lookup.data:
         return jsonify({"success": False, "error": "Email not found"}), 404
 
-    # CREATE TOKEN
-    token = str(random.randint(10000000, 99999999))
+    # 2️⃣ CREATE TOKEN
+    token = f"{random.randint(10000000, 99999999)}"
 
-    # UPDATE USER WITH TOKEN
+    # 3️⃣ SAVE TOKEN
     try:
         supabase.table("dere").update({
             "continue_token": token
@@ -272,35 +278,48 @@ def continue_reg():
     except Exception:
         return jsonify({"success": False, "error": "Database update failed"}), 500
 
-    # EMAIL CONTENT
-    continue_url = f"https://flexx254.github.io/drivers-frontend/continue-form.html?token={token}"
+    # 4️⃣ EMAIL CONTENT
+    continue_url = (
+        "https://flexx254.github.io/drivers-frontend/"
+        f"continue-form.html?token={token}"
+    )
 
-    try:
-        sg = sendgrid.SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
-        message = Mail(
-            from_email=os.getenv("EMAIL_FROM"),
-            to_emails=email,
-            subject="Continue Your Registration",
-            html_content=f"""
-                <p>Hello,</p>
-                <p>Click the button below to continue your registration:</p>
-                <a href="{continue_url}" 
-                style="background:#1b8f2a;color:white;padding:12px 18px;text-decoration:none;border-radius:6px;">
-                Continue Registration
-                </a>
-            """
-        )
-        sg.send(message)
-    except Exception as e:
-        logger.exception("Email sending failed: %s", str(e))
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+        <h2 style="color:#1b8f2a">Continue Registration</h2>
+        <p>Hello,</p>
+        <p>Click the button below to continue your registration:</p>
+
+        <p style="text-align:center;margin:30px 0">
+            <a href="{continue_url}"
+               style="background:#1b8f2a;color:#fff;padding:14px 22px;
+               text-decoration:none;border-radius:6px;display:inline-block">
+               Continue Registration
+            </a>
+        </p>
+
+        <p style="font-size:12px;color:#666">
+            If you did not request this, please ignore this email.
+        </p>
+    </div>
+    """
+
+    # 5️⃣ SEND EMAIL (GMAIL SMTP)
+    sent = send_gmail_html(
+        email,
+        "Continue Your Registration",
+        html
+    )
+
+    if not sent:
         return jsonify({"success": False, "error": "Failed to send email"}), 500
 
+    # 6️⃣ SUCCESS
     return jsonify({
         "success": True,
         "message": "Email sent. Check your inbox to continue registration.",
         "token": token
     }), 200
-
 
 
 
