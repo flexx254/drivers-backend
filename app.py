@@ -24,6 +24,11 @@ from supabase import create_client, Client
 # pillow
 from PIL import Image
 
+
+
+# ---------- logging ----------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 # -----------------------------
 # GMAIL SMTP HELPER
 # -----------------------------
@@ -57,9 +62,7 @@ def send_gmail_html(to_email: str, subject: str, html: str) -> bool:
 # -----------------------------
 load_dotenv()
 
-# ---------- logging ----------
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
 
 app = Flask(__name__)
 
