@@ -8,9 +8,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 import logging
 import json
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -33,35 +31,54 @@ load_dotenv()
 # ---------- logging ----------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-# -----------------------------
-# GMAIL SMTP HELPER
-# -----------------------------
-def send_gmail_html(to_email: str, subject: str, html: str) -> bool:
+
+from mailjet_rest import Client
+
+mailjet = Client(
+    auth=(
+        os.getenv("MAILJET_API_KEY"),
+        os.getenv("MAILJET_SECRET_KEY")
+    ),
+    version="v3.1"
+)
+
+def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
     try:
-        gmail_user = os.getenv("GMAIL_USER")
-        gmail_pass = os.getenv("GMAIL_APP_PASSWORD")
+        sender_email = os.getenv("MAILJET_SENDER_EMAIL")
+        sender_name = os.getenv("MAILJET_SENDER_NAME", "Strategic Drivers")
 
-        if not gmail_user or not gmail_pass:
-            raise RuntimeError("Gmail SMTP credentials missing")
+        if not sender_email:
+            raise RuntimeError("Mailjet sender email missing")
 
-        msg = MIMEMultipart("alternative")
-        msg["From"] = f"Strategic Drivers <{gmail_user}>"
-        msg["To"] = to_email
-        msg["Subject"] = subject
+        data = {
+            "Messages": [
+                {
+                    "From": {
+                        "Email": sender_email,
+                        "Name": sender_name
+                    },
+                    "To": [
+                        {
+                            "Email": to_email
+                        }
+                    ],
+                    "Subject": subject,
+                    "HTMLPart": html
+                }
+            ]
+        }
 
-        msg.attach(MIMEText(html, "html"))
+        result = mailjet.send.create(data=data)
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-            server.login(gmail_user, gmail_pass)
-            server.sendmail(gmail_user, to_email, msg.as_string())
+        if result.status_code not in (200, 201):
+            logger.error("Mailjet send failed: %s", result.json())
+            return False
 
         return True
 
     except Exception as e:
-        logger.exception("Gmail SMTP send failed: %s", str(e))
+        logger.exception("Mailjet send error: %s", str(e))
         return False
-
-
 
 
 app = Flask(__name__)
@@ -336,7 +353,7 @@ def continue_reg():
     """
 
     # 5️⃣ SEND EMAIL (GMAIL SMTP)
-    sent = send_gmail_html(
+    sent = send_mailjet_html(
         email,
         "Continue Your Registration",
         html
