@@ -9,3 +9,4 @@ sendgrid
 Pillow
 Werkzeug
 gunicorn
+mailjet-rest
