@@ -910,6 +910,89 @@ def update_sacco():
         logger.exception("Sacco update error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
 
+@app.route("/register-owner", methods=["POST"])
+def register_owner():
+    try:
+        # -----------------------------
+        # 1. Read form fields
+        # -----------------------------
+        full_name = (request.form.get("full_name") or "").strip()
+        phone = (request.form.get("phone_number") or "").strip()
+        plate = (request.form.get("number_plate") or "").strip()
+
+        car_image = request.files.get("car_image")
+        logbook = request.files.get("logbook")
+        inspection = request.files.get("inspection_report")
+        uber_report = request.files.get("uber_report")  # optional
+
+        # -----------------------------
+        # 2. Validate required fields
+        # -----------------------------
+        if not full_name:
+            return jsonify({"success": False, "error": "Full name is required"}), 400
+
+        if not phone or not PHONE_REGEX.match(phone):
+            return jsonify({"success": False, "error": "Invalid phone number format"}), 400
+
+        if not plate:
+            return jsonify({"success": False, "error": "Number plate is required"}), 400
+
+        normalized_plate = normalize_plate(plate)
+        if not valid_plate(normalized_plate):
+            return jsonify({"success": False, "error": "Invalid number plate"}), 400
+
+        if not car_image or not logbook or not inspection:
+            return jsonify({"success": False, "error": "Missing required documents"}), 400
+
+        # -----------------------------
+        # 3. Upload helper
+        # -----------------------------
+        def upload_doc(file, folder):
+            if not allowed_file(file):
+                raise ValueError("Invalid file format")
+            resized = resize_image(file)
+            upload = cloudinary.uploader.upload(resized, folder=folder)
+            return upload.get("secure_url")
+
+        # -----------------------------
+        # 4. Upload files
+        # -----------------------------
+        car_image_url = upload_doc(car_image, "owner/car")
+        logbook_url = upload_doc(logbook, "owner/logbook")
+        inspection_url = upload_doc(inspection, "owner/inspection")
+
+        uber_url = None
+        if uber_report:
+            uber_url = upload_doc(uber_report, "owner/uber")
+
+        # -----------------------------
+        # 5. Insert into Supabase
+        # -----------------------------
+        insert = supabase.table("owner").insert({
+            "full_name": full_name,
+            "phone_number": phone,
+            "number_plate": normalized_plate,
+            "car_image_url": car_image_url,
+            "logbook_url": logbook_url,
+            "inspection_report_url": inspection_url,
+            "uber_report_url": uber_url
+        }).execute()
+
+        if getattr(insert, "error", None):
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Car owner registered successfully"
+        }), 200
+
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+
+    except Exception as e:
+        logger.exception("Owner registration error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
+
         
 # -----------------------------
 # JSON error handlers to avoid HTML pages
