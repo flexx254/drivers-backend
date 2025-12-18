@@ -1020,6 +1020,28 @@ def register_owner():
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
+@app.route("/available-cars", methods=["GET"])
+def available_cars():
+    try:
+        # Fetch all cars from Supabase
+        response = supabase.table("owner").select(
+            "car_image_url, car_make, car_model, number_plate"
+        ).execute()
+
+        if getattr(response, "error", None):
+            return jsonify({"success": False, "error": "Failed to fetch cars"}), 500
+
+        cars = response.data  # This is a list of dictionaries
+
+        return jsonify({
+            "success": True,
+            "cars": cars
+        }), 200
+
+    except Exception as e:
+        logger.exception("Fetching available cars error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
