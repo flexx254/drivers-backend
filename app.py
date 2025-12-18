@@ -910,6 +910,7 @@ def update_sacco():
         logger.exception("Sacco update error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
 
+
 @app.route("/register-owner", methods=["POST"])
 def register_owner():
     try:
@@ -945,13 +946,38 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 3. Upload helper
+        # 3. Upload helper (SAFE)
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
                 raise ValueError("Invalid file format")
-            resized = resize_image(file)
-            upload = cloudinary.uploader.upload(resized, folder=folder)
+
+            # PDFs → upload directly (same as working route)
+            if file.mimetype == "application/pdf":
+                upload = cloudinary.uploader.upload(
+                    file,
+                    folder=folder,
+                    resource_type="auto"
+                )
+                return upload.get("secure_url")
+
+            # Images → resize safely
+            image = Image.open(file)
+
+            if image.mode in ("RGBA", "P"):
+                image = image.convert("RGB")
+
+            image.thumbnail((1200, 1200))
+
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=85)
+            buffer.seek(0)
+
+            upload = cloudinary.uploader.upload(
+                buffer,
+                folder=folder,
+                resource_type="image"
+            )
             return upload.get("secure_url")
 
         # -----------------------------
@@ -992,7 +1018,6 @@ def register_owner():
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-
         
 # -----------------------------
 # JSON error handlers to avoid HTML pages
