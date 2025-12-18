@@ -946,13 +946,13 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 3. Upload helper (SAFE)
+        # 3. Upload helper (safe)
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
                 raise ValueError("Invalid file format")
 
-            # PDFs → upload directly (same as working route)
+            # PDFs → upload directly
             if file.mimetype == "application/pdf":
                 upload = cloudinary.uploader.upload(
                     file,
@@ -969,7 +969,7 @@ def register_owner():
 
             image.thumbnail((1200, 1200))
 
-            buffer = io.BytesIO()
+            buffer = BytesIO()
             image.save(buffer, format="JPEG", quality=85)
             buffer.seek(0)
 
@@ -1018,7 +1018,6 @@ def register_owner():
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-        
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
