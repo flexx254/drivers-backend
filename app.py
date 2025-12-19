@@ -1042,6 +1042,40 @@ def available_cars():
     except Exception as e:
         logger.exception("Fetching available cars error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@app.route("/connect-owner", methods=["POST"])
+def connect_owner():
+    try:
+        data = request.get_json()
+
+        number_plate = (data.get("number_plate") or "").strip()
+        location = (data.get("location") or "").strip()
+
+        if not number_plate or not location:
+            return jsonify({
+                "success": False,
+                "error": "Number plate and location are required"
+            }), 400
+
+        # Insert into dere table
+        result = supabase.table("dere").insert({
+            "number_plate": number_plate,
+            "location": location
+        }).execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Connection request saved"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+        
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
