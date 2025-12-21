@@ -1085,26 +1085,26 @@ def update_location():
         if not row_id or not location:
             return jsonify({"message": "ID and location are required"}), 400
 
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE dere
-            SET location = %s
-            WHERE id = %s
-        """, (location, row_id))
+        response = httpx.patch(
+            f"{SUPABASE_URL}/rest/v1/dere",
+            headers={
+                **HEADERS,
+                "Prefer": "return=minimal"
+            },
+            params={"id": f"eq.{row_id}"},
+            json={"location": location}
+        )
 
-        if cursor.rowcount == 0:
-            conn.rollback()
-            cursor.close()
-            return jsonify({"message": "ID not found"}), 404
-
-        conn.commit()
-        cursor.close()
+        if response.status_code not in (200, 204):
+            return jsonify({
+                "message": "Update failed",
+                "details": response.text
+            }), 500
 
         return jsonify({"message": "Location updated successfully"})
 
     except Exception as e:
         return jsonify({"message": str(e)}), 500
-
         
 # -----------------------------
 # JSON error handlers to avoid HTML pages
