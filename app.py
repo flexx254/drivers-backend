@@ -1079,31 +1079,42 @@ def connect_owner():
 @app.route("/update-location", methods=["POST", "OPTIONS"])
 def update_location():
 
-    # Handle CORS preflight
+    # --- CORS preflight ---
     if request.method == "OPTIONS":
         return jsonify(success=True), 200
 
+    if supabase is None:
+        return jsonify({
+            "success": False,
+            "error": "Database client missing"
+        }), 500
+
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(force=True) or {}
 
-        record_id = data.get("id")
-        location = (data.get("location") or "").strip()
-
-        if not record_id or not location:
+        # Validate ID
+        try:
+            record_id = int(data.get("id"))
+        except (TypeError, ValueError):
             return jsonify({
                 "success": False,
-                "error": "ID and location are required"
+                "error": "ID must be a number"
             }), 400
 
-        # -----------------------------
-        # 1. Check if ID exists
-        # -----------------------------
+        location = (data.get("location") or "").strip()
+
+        if not location:
+            return jsonify({
+                "success": False,
+                "error": "Location is required"
+            }), 400
+
+        # 1️⃣ Check ID exists
         lookup = (
             supabase
-            .table("dere")          # <-- change if different table
+            .table("dere")
             .select("id")
             .eq("id", record_id)
-            .single()
             .execute()
         )
 
@@ -1113,10 +1124,8 @@ def update_location():
                 "error": "ID not found"
             }), 404
 
-        # -----------------------------
-        # 2. Update location
-        # -----------------------------
-        update = (
+        # 2️⃣ Update location
+        update_resp = (
             supabase
             .table("dere")
             .update({"location": location})
@@ -1124,7 +1133,7 @@ def update_location():
             .execute()
         )
 
-        if getattr(update, "error", None):
+        if getattr(update_resp, "error", None):
             return jsonify({
                 "success": False,
                 "error": "Failed to update location"
@@ -1132,7 +1141,9 @@ def update_location():
 
         return jsonify({
             "success": True,
-            "message": "Location updated successfully"
+            "message": "Location updated successfully",
+            "id": record_id,
+            "location": location
         }), 200
 
     except Exception as e:
