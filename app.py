@@ -1079,33 +1079,61 @@ def connect_owner():
 @app.route("/update-location", methods=["POST"])
 def update_location():
     try:
-        row_id = request.form.get("id")
-        location = (request.form.get("location") or "").strip()
+        data = request.get_json()
 
-        if not row_id or not location:
-            return jsonify({"message": "ID and location are required"}), 400
+        record_id = data.get("id")
+        location = (data.get("location") or "").strip()
 
-        response = httpx.patch(
-            f"{SUPABASE_URL}/rest/v1/dere",
-            headers={
-                **HEADERS,
-                "Prefer": "return=minimal"
-            },
-            params={"id": f"eq.{row_id}"},
-            json={"location": location}
+        # -----------------------------
+        # Basic validation
+        # -----------------------------
+        if not record_id or not location:
+            return jsonify({
+                "success": False,
+                "error": "ID and location are required"
+            }), 400
+
+        # -----------------------------
+        # Check if ID exists
+        # -----------------------------
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM public.your_table_name WHERE id = %s",
+            (record_id,)
         )
 
-        if response.status_code not in (200, 204):
+        row = cursor.fetchone()
+        if not row:
             return jsonify({
-                "message": "Update failed",
-                "details": response.text
-            }), 500
+                "success": False,
+                "error": "ID not found"
+            }), 404
 
-        return jsonify({"message": "Location updated successfully"})
+        # -----------------------------
+        # Update location
+        # -----------------------------
+        cursor.execute(
+            """
+            UPDATE public.your_table_name
+            SET location = %s
+            WHERE id = %s
+            """,
+            (location, record_id)
+        )
+
+        conn.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Location updated successfully"
+        })
 
     except Exception as e:
-        return jsonify({"message": str(e)}), 500
-        
+        conn.rollback()
+        return jsonify({
+            "success": False,
+            "error": "Server error"
+        }), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
