@@ -1076,17 +1076,19 @@ def connect_owner():
         }), 500
 
 
-@app.route("/update-location", methods=["POST"])
+@app.route("/update-location", methods=["POST", "OPTIONS"])
 def update_location():
+
+    # Handle CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify(success=True), 200
+
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
 
         record_id = data.get("id")
         location = (data.get("location") or "").strip()
 
-        # -----------------------------
-        # Basic validation
-        # -----------------------------
         if not record_id or not location:
             return jsonify({
                 "success": False,
@@ -1094,42 +1096,47 @@ def update_location():
             }), 400
 
         # -----------------------------
-        # Check if ID exists
+        # 1. Check if ID exists
         # -----------------------------
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM public.your_table_name WHERE id = %s",
-            (record_id,)
+        lookup = (
+            supabase
+            .table("dere")          # <-- change if different table
+            .select("id")
+            .eq("id", record_id)
+            .single()
+            .execute()
         )
 
-        row = cursor.fetchone()
-        if not row:
+        if not lookup.data:
             return jsonify({
                 "success": False,
                 "error": "ID not found"
             }), 404
 
         # -----------------------------
-        # Update location
+        # 2. Update location
         # -----------------------------
-        cursor.execute(
-            """
-            UPDATE public.your_table_name
-            SET location = %s
-            WHERE id = %s
-            """,
-            (location, record_id)
+        update = (
+            supabase
+            .table("dere")
+            .update({"location": location})
+            .eq("id", record_id)
+            .execute()
         )
 
-        conn.commit()
+        if getattr(update, "error", None):
+            return jsonify({
+                "success": False,
+                "error": "Failed to update location"
+            }), 500
 
         return jsonify({
             "success": True,
             "message": "Location updated successfully"
-        })
+        }), 200
 
     except Exception as e:
-        conn.rollback()
+        logger.exception("Update location error: %s", str(e))
         return jsonify({
             "success": False,
             "error": "Server error"
