@@ -1075,6 +1075,36 @@ def connect_owner():
             "error": str(e)
         }), 500
 
+
+@app.route("/update-location", methods=["POST"])
+def update_location():
+    try:
+        row_id = request.form.get("id")
+        location = (request.form.get("location") or "").strip()
+
+        if not row_id or not location:
+            return jsonify({"message": "ID and location are required"}), 400
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE dere
+            SET location = %s
+            WHERE id = %s
+        """, (location, row_id))
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            cursor.close()
+            return jsonify({"message": "ID not found"}), 404
+
+        conn.commit()
+        cursor.close()
+
+        return jsonify({"message": "Location updated successfully"})
+
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
+
         
 # -----------------------------
 # JSON error handlers to avoid HTML pages
