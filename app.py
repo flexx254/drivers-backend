@@ -1152,6 +1152,49 @@ def update_location():
             "success": False,
             "error": "Server error"
         }), 500
+
+
+# ============================================================
+# ROUTE: GET OWNERS WITH LOCATION (OWNER DASHBOARD)
+# ============================================================
+@app.route("/owners-with-location", methods=["GET"])
+@limiter.limit("20 per minute")
+def owners_with_location():
+    if supabase is None:
+        return jsonify({
+            "success": False,
+            "error": "Database client missing"
+        }), 500
+
+    try:
+        response = (
+            supabase
+            .table("dere")
+            .select("id, full_name, profile_pic_url, location")
+            .not_.is_("location", "null")
+            .execute()
+        )
+
+        if getattr(response, "error", None):
+            logger.error("Supabase fetch error: %s", response.error)
+            return jsonify({
+                "success": False,
+                "error": "Failed to fetch owners"
+            }), 500
+
+        owners = [
+            row for row in response.data
+            if row.get("location") and row["location"].strip()
+        ]
+
+        return jsonify(owners), 200
+
+    except Exception as e:
+        logger.exception("owners-with-location error: %s", str(e))
+        return jsonify({
+            "success": False,
+            "error": "Server error"
+        }), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
