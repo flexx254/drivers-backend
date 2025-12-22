@@ -1195,6 +1195,74 @@ def owners_with_location():
             "success": False,
             "error": "Server error"
         }), 500
+
+
+# ============================================================
+# ROUTE: CONNECT OWNER (SECURE, RENAMED)
+# ============================================================
+@app.route("/connect-owner-secure", methods=["POST"])
+@limiter.limit("5 per minute")
+def connect_owner_secure():
+    if supabase is None:
+        return jsonify({
+            "success": False,
+            "error": "Database client missing"
+        }), 500
+
+    try:
+        data = request.get_json(force=True) or {}
+        owner_id = data.get("owner_id")
+
+        # Validate owner_id
+        try:
+            owner_id = int(owner_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "error": "Invalid owner ID"
+            }), 400
+
+        # Fetch owner safely
+        lookup = (
+            supabase
+            .table("dere")
+            .select("phone_number, location")
+            .eq("id", owner_id)
+            .single()
+            .execute()
+        )
+
+        if not lookup.data:
+            return jsonify({
+                "success": False,
+                "error": "Owner not found"
+            }), 404
+
+        # SECURITY: location must exist
+        if not lookup.data.get("location"):
+            return jsonify({
+                "success": False,
+                "error": "Owner location not set"
+            }), 403
+
+        phone = lookup.data.get("phone_number")
+        if not phone:
+            return jsonify({
+                "success": False,
+                "error": "Phone number unavailable"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "phone_number": phone
+        }), 200
+
+    except Exception as e:
+        logger.exception("connect-owner-secure error: %s", str(e))
+        return jsonify({
+            "success": False,
+            "error": "Server error"
+        }), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
