@@ -1263,6 +1263,20 @@ def connect_owner_secure():
             "success": False,
             "error": "Server error"
         }), 500
+
+@app.route("/sms", methods=["POST"])
+def receive_sms():
+    data = request.get_json(force=True) or {}
+
+    sms_text = data.get("sms")
+
+    if not sms_text:
+        return jsonify(success=False, error="Missing SMS"), 400
+
+    # TEMP: just log, do NOT parse yet
+    print("RAW SMS:", sms_text)
+
+    return jsonify(success=True), 200
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
