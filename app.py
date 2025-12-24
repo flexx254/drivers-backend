@@ -1268,15 +1268,63 @@ def connect_owner_secure():
 def receive_sms():
     data = request.get_json(force=True) or {}
 
-    sms_text = data.get("sms")
+    sms = data.get("message") or data.get("sms")
+    if not sms:
+        return jsonify({"error": "SMS missing"}), 400
 
-    if not sms_text:
-        return jsonify(success=False, error="Missing SMS"), 400
+    try:
+        # --- Extract MPESA code ---
+        code_match = re.search(r"\b[A-Z0-9]{10}\b", sms)
+        if not code_match:
+            return jsonify({"error": "Invalid MPESA SMS"}), 400
+        code = code_match.group(0)
 
-    # TEMP: just log, do NOT parse yet
-    print("RAW SMS:", sms_text)
+        # --- Prevent duplicates ---
+        exists = supabase.table("payment").select("id").eq("code", code).execute()
+        if exists.data:
+            return jsonify({"status": "duplicate"}), 200
 
-    return jsonify(success=True), 200
+        # --- Extract amount ---
+        amt_match = re.search(r"Ksh([\d,]+\.\d{2})", sms)
+        amount = float(amt_match.group(1).replace(",", "")) if amt_match else 0
+
+        # --- Extract names ---
+        name_match = re.search(r"from\s+([A-Z\s]+)\s+\d", sms)
+        names = name_match.group(1).strip() if name_match else "UNKNOWN"
+
+        # --- Extract phone ---
+        phone_match = re.search(r"\b(07\d{8}|2547\d{8})\b", sms)
+        phone = phone_match.group(0) if phone_match else ""
+
+        # Normalize phone
+        if phone.startswith("07"):
+            phone = "254" + phone[1:]
+
+        # --- Extract date & time ---
+        date_match = re.search(r"on (\d{2}/\d{2}/\d{2}) at (\d{1,2}:\d{2} [AP]M)", sms)
+        if date_match:
+            paid_at = datetime.strptime(
+                f"{date_match.group(1)} {date_match.group(2)}",
+                "%d/%m/%y %I:%M %p"
+            )
+        else:
+            paid_at = datetime.utcnow()
+
+        # --- Insert into payment table ---
+        supabase.table("payment").insert({
+            "sms": sms,
+            "code": code,
+            "amount": amount,
+            "names": names,
+            "phone": phone,
+            "paid_at": paid_at.isoformat()
+        }).execute()
+
+        return jsonify({"status": "stored", "code": code}), 200
+
+    except Exception as e:
+        print("❌ SMS error:", e)
+        return jsonify({"error": str(e)}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
