@@ -1264,67 +1264,27 @@ def connect_owner_secure():
             "error": "Server error"
         }), 500
 
-@app.route("/sms", methods=["POST"])
-def receive_sms():
-    data = request.get_json(force=True) or {}
-
-    sms = data.get("message") or data.get("sms")
-    if not sms:
-        return jsonify({"error": "SMS missing"}), 400
-
+@app.route('/payment', methods=['POST'])
+def receive_payment_sms():
     try:
-        # --- Extract MPESA code ---
-        code_match = re.search(r"\b[A-Z0-9]{10}\b", sms)
-        if not code_match:
-            return jsonify({"error": "Invalid MPESA SMS"}), 400
-        code = code_match.group(0)
+        data = request.get_json()  # Get JSON from MacroDroid
+        sms_text = data.get("message")  # "message" is the JSON key from MacroDroid
 
-        # --- Prevent duplicates ---
-        exists = supabase.table("payment").select("id").eq("code", code).execute()
-        if exists.data:
-            return jsonify({"status": "duplicate"}), 200
+        if not sms_text:
+            return jsonify({"error": "No SMS message provided"}), 400
 
-        # --- Extract amount ---
-        amt_match = re.search(r"Ksh([\d,]+\.\d{2})", sms)
-        amount = float(amt_match.group(1).replace(",", "")) if amt_match else 0
-
-        # --- Extract names ---
-        name_match = re.search(r"from\s+([A-Z\s]+)\s+\d", sms)
-        names = name_match.group(1).strip() if name_match else "UNKNOWN"
-
-        # --- Extract phone ---
-        phone_match = re.search(r"\b(07\d{8}|2547\d{8})\b", sms)
-        phone = phone_match.group(0) if phone_match else ""
-
-        # Normalize phone
-        if phone.startswith("07"):
-            phone = "254" + phone[1:]
-
-        # --- Extract date & time ---
-        date_match = re.search(r"on (\d{2}/\d{2}/\d{2}) at (\d{1,2}:\d{2} [AP]M)", sms)
-        if date_match:
-            paid_at = datetime.strptime(
-                f"{date_match.group(1)} {date_match.group(2)}",
-                "%d/%m/%y %I:%M %p"
-            )
-        else:
-            paid_at = datetime.utcnow()
-
-        # --- Insert into payment table ---
-        supabase.table("payment").insert({
-            "sms": sms,
-            "code": code,
-            "amount": amount,
-            "names": names,
-            "phone": phone,
-            "paid_at": paid_at.isoformat()
+        # Insert the raw SMS into Supabase payment table
+        insert_response = supabase.table("payment").insert({
+            "sms": sms_text
         }).execute()
 
-        return jsonify({"status": "stored", "code": code}), 200
+        if insert_response.data:
+            return jsonify({"status": "success", "inserted": insert_response.data[0]}), 200
+        else:
+            return jsonify({"status": "failed", "error": "Could not insert SMS"}), 500
 
     except Exception as e:
-        print("❌ SMS error:", e)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
