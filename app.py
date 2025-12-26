@@ -150,6 +150,17 @@ def normalize_plate(plate: str) -> str:
 def valid_plate(plate: str) -> bool:
     return bool(PLATE_REGEX.match(plate))
 
+def normalize_phone(number: str) -> str:
+    """Convert MPESA phone formats to standard 2547xxxxxxx."""
+    number = number.strip().replace(" ", "").replace("+", "")
+    if number.startswith("0") and len(number) == 10:
+        return "254" + number[1:]
+    elif number.startswith("7") and len(number) == 9:
+        return "254" + number
+    elif number.startswith("254") and len(number) == 12:
+        return number
+    return number
+
 def check_password_strength(password):
     if len(password) < 8:
         return False, "Password must be at least 8 characters."
