@@ -1278,15 +1278,41 @@ def connect_owner_secure():
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
-        data = request.get_json()  # Get JSON from MacroDroid
-        sms_text = data.get("message")  # "message" is the JSON key from MacroDroid
+        data = request.get_json()
+        sms_text = data.get("message")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Insert the raw SMS into Supabase payment table
+        # Extract fields using regex
+        code_match = re.search(r'^([A-Z0-9]+)', sms_text)
+        amount_match = re.search(r'Ksh([0-9,.]+)', sms_text)
+        phone_match = re.search(r'(\+?\d{9,12})', sms_text)
+        names_match = re.search(r'from\s+(.*?)\s+\d{9,12}', sms_text)
+        date_match = re.search(r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})', sms_text)
+
+        code = code_match.group(1) if code_match else None
+        amount = float(amount_match.group(1).replace(',', '')) if amount_match else None
+        phone = normalize_phone(phone_match.group(1)) if phone_match else None
+        names = names_match.group(1).strip() if names_match else None
+        paid_at = datetime.strptime(date_match.group(1), '%d/%m/%y at %I:%M %p') if date_match else None
+
+        if not code:
+            return jsonify({"error": "Could not extract transaction code"}), 400
+
+        # Check for duplicate code
+        existing = supabase.table("payment").select("id").eq("code", code).execute()
+        if existing.data:
+            return jsonify({"status": "duplicate", "message": "Transaction code already exists"}), 200
+
+        # Insert into Supabase
         insert_response = supabase.table("payment").insert({
-            "sms": sms_text
+            "sms": sms_text,
+            "code": code,
+            "amount": amount,
+            "names": names,
+            "phone": phone,
+            "paid_at": paid_at
         }).execute()
 
         if insert_response.data:
