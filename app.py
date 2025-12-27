@@ -1277,6 +1277,8 @@ def connect_owner_secure():
         }), 500
 
 
+
+
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
@@ -1286,9 +1288,14 @@ def receive_payment_sms():
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Insert the raw SMS into Supabase payment table
+        # Extract the code (alphanumeric, 9 characters)
+        code_match = re.search(r'\b[A-Z0-9]{9}\b', sms_text)
+        code = code_match.group(0) if code_match else None
+
+        # Insert the raw SMS and extracted code into Supabase payment table
         insert_response = supabase.table("payment").insert({
-            "sms": sms_text
+            "sms": sms_text,
+            "code": code
         }).execute()
 
         if insert_response.data:
