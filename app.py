@@ -1296,6 +1296,81 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/payment-parse/<int:payment_id>", methods=["POST"])
+def parse_payment_sms(payment_id):
+    try:
+        # 1️⃣ Fetch raw SMS
+        record = (
+            supabase
+            .table("payment")
+            .select("*")
+            .eq("id", payment_id)
+            .single()
+            .execute()
+        )
+
+        if not record.data:
+            return jsonify({"error": "Payment not found"}), 404
+
+        sms = record.data.get("sms", "")
+
+        if not sms:
+            return jsonify({"error": "Empty SMS"}), 400
+
+        # 2️⃣ Extract details using regex
+        code_match = re.search(r'^([A-Z0-9]{8,12})', sms)
+        amount_match = re.search(r'Ksh\s*([0-9,.]+)', sms)
+        phone_match = re.search(r'(\+?\d{9,12})', sms)
+        names_match = re.search(r'from\s+(.+?)\s+\d{9,12}', sms, re.IGNORECASE)
+
+        date_match = re.search(
+            r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})',
+            sms
+        )
+
+        code = code_match.group(1) if code_match else None
+        amount = float(amount_match.group(1).replace(",", "")) if amount_match else None
+        phone = normalize_phone(phone_match.group(1)) if phone_match else None
+        names = names_match.group(1).strip() if names_match else None
+
+        paid_at = None
+        if date_match:
+            try:
+                paid_at = datetime.strptime(
+                    date_match.group(1),
+                    "%d/%m/%y at %I:%M %p"
+                )
+            except ValueError:
+                paid_at = None
+
+        # 3️⃣ Update payment row
+        update = supabase.table("payment").update({
+            "code": code,
+            "amount": amount,
+            "phone": phone,
+            "names": names,
+            "paid_at": paid_at,
+            "processed": True
+        }).eq("id", payment_id).execute()
+
+        return jsonify({
+            "success": True,
+            "parsed": {
+                "code": code,
+                "amount": amount,
+                "phone": phone,
+                "names": names,
+                "paid_at": paid_at
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Parsing failed"
+        }), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
