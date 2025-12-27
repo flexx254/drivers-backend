@@ -80,6 +80,59 @@ def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
         logger.exception("Mailjet send error: %s", str(e))
         return False
 
+def parse_and_update_payment(payment_id):
+    record = (
+        supabase
+        .table("payment")
+        .select("*")
+        .eq("id", payment_id)
+        .single()
+        .execute()
+    )
+
+    if not record.data:
+        return False
+
+    sms = record.data.get("sms", "")
+    if not sms:
+        return False
+
+    code_match = re.search(r'^([A-Z0-9]{8,12})', sms)
+    amount_match = re.search(r'Ksh\s*([0-9,.]+)', sms)
+    phone_match = re.search(r'(\+?\d{9,12})', sms)
+    names_match = re.search(r'from\s+(.+?)\s+\d{9,12}', sms, re.IGNORECASE)
+
+    date_match = re.search(
+        r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})',
+        sms
+    )
+
+    code = code_match.group(1) if code_match else None
+    amount = float(amount_match.group(1).replace(",", "")) if amount_match else None
+    phone = normalize_phone(phone_match.group(1)) if phone_match else None
+    names = names_match.group(1).strip() if names_match else None
+
+    paid_at = None
+    if date_match:
+        try:
+            paid_at = datetime.strptime(
+                date_match.group(1),
+                "%d/%m/%y at %I:%M %p"
+            )
+        except ValueError:
+            pass
+
+    supabase.table("payment").update({
+        "code": code,
+        "amount": amount,
+        "phone": phone,
+        "names": names,
+        "paid_at": paid_at,
+        "processed": True
+    }).eq("id", payment_id).execute()
+
+    return True
+
 
 app = Flask(__name__)
 
