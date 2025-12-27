@@ -1275,101 +1275,46 @@ def connect_owner_secure():
             "error": "Server error"
         }), 500
 
+
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
-        data = request.get_json()  # Get JSON from MacroDroid
-        sms_text = data.get("message")  # "message" is the JSON key from MacroDroid
+        data = request.get_json(force=True)
+        sms_text = data.get("message")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Insert the raw SMS into Supabase payment table
+        # 1️⃣ Insert raw SMS
         insert_response = supabase.table("payment").insert({
-            "sms": sms_text
+            "sms": sms_text,
+            "processed": False
         }).execute()
 
-        if insert_response.data:
-            return jsonify({"status": "success", "inserted": insert_response.data[0]}), 200
-        else:
-            return jsonify({"status": "failed", "error": "Could not insert SMS"}), 500
+        if not insert_response.data:
+            return jsonify({
+                "status": "failed",
+                "error": "Could not insert SMS"
+            }), 500
 
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        payment_id = insert_response.data[0]["id"]
 
-
-@app.route("/payment-parse/<int:payment_id>", methods=["POST"])
-def parse_payment_sms(payment_id):
-    try:
-        # 1️⃣ Fetch raw SMS
-        record = (
-            supabase
-            .table("payment")
-            .select("*")
-            .eq("id", payment_id)
-            .single()
-            .execute()
-        )
-
-        if not record.data:
-            return jsonify({"error": "Payment not found"}), 404
-
-        sms = record.data.get("sms", "")
-
-        if not sms:
-            return jsonify({"error": "Empty SMS"}), 400
-
-        # 2️⃣ Extract details using regex
-        code_match = re.search(r'^([A-Z0-9]{8,12})', sms)
-        amount_match = re.search(r'Ksh\s*([0-9,.]+)', sms)
-        phone_match = re.search(r'(\+?\d{9,12})', sms)
-        names_match = re.search(r'from\s+(.+?)\s+\d{9,12}', sms, re.IGNORECASE)
-
-        date_match = re.search(
-            r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})',
-            sms
-        )
-
-        code = code_match.group(1) if code_match else None
-        amount = float(amount_match.group(1).replace(",", "")) if amount_match else None
-        phone = normalize_phone(phone_match.group(1)) if phone_match else None
-        names = names_match.group(1).strip() if names_match else None
-
-        paid_at = None
-        if date_match:
-            try:
-                paid_at = datetime.strptime(
-                    date_match.group(1),
-                    "%d/%m/%y at %I:%M %p"
-                )
-            except ValueError:
-                paid_at = None
-
-        # 3️⃣ Update payment row
-        update = supabase.table("payment").update({
-            "code": code,
-            "amount": amount,
-            "phone": phone,
-            "names": names,
-            "paid_at": paid_at,
-            "processed": True
-        }).eq("id", payment_id).execute()
+        # 2️⃣ AUTO-PARSE (this is the key change)
+        try:
+            parse_and_update_payment(payment_id)
+        except Exception:
+            # Never break SMS intake
+            pass
 
         return jsonify({
-            "success": True,
-            "parsed": {
-                "code": code,
-                "amount": amount,
-                "phone": phone,
-                "names": names,
-                "paid_at": paid_at
-            }
+            "status": "success",
+            "payment_id": payment_id
         }), 200
 
     except Exception as e:
         return jsonify({
-            "success": False,
-            "error": "Parsing failed"
+            "status": "error",
+            "error": "Server error"
         }), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
