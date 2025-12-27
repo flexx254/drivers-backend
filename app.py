@@ -1277,7 +1277,27 @@ def connect_owner_secure():
         }), 500
 
 
+@app.route('/payment', methods=['POST'])
+def receive_payment_sms():
+    try:
+        data = request.get_json()  # Get JSON from MacroDroid
+        sms_text = data.get("message")  # "message" is the JSON key from MacroDroid
 
+        if not sms_text:
+            return jsonify({"error": "No SMS message provided"}), 400
+
+        # Insert the raw SMS into Supabase payment table
+        insert_response = supabase.table("payment").insert({
+            "sms": sms_text
+        }).execute()
+
+        if insert_response.data:
+            return jsonify({"status": "success", "inserted": insert_response.data[0]}), 200
+        else:
+            return jsonify({"status": "failed", "error": "Could not insert SMS"}), 500
+
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
