@@ -1277,36 +1277,53 @@ def connect_owner_secure():
 
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
+    if supabase is None:
+        return jsonify({"error": "Database client missing"}), 500
+
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or request.form or {}
         sms_text = data.get("message")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Extract fields using regex
+        # Extract fields
         code_match = re.search(r'^([A-Z0-9]+)', sms_text)
-        amount_match = re.search(r'Ksh([0-9,.]+)', sms_text)
+        amount_match = re.search(r'Ksh\s*([0-9,.]+)', sms_text)
         phone_match = re.search(r'(\+?\d{9,12})', sms_text)
-        names_match = re.search(r'from\s+(.*?)\s+\d{9,12}', sms_text)
-        date_match = re.search(r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})', sms_text)
+        names_match = re.search(r'from\s+(.+?)\s+\d{9,12}', sms_text, re.IGNORECASE)
+        date_match = re.search(
+            r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s*[APMapm]{2})',
+            sms_text
+        )
 
         code = code_match.group(1) if code_match else None
         amount = float(amount_match.group(1).replace(',', '')) if amount_match else None
         phone = normalize_phone(phone_match.group(1)) if phone_match else None
         names = names_match.group(1).strip() if names_match else None
-        paid_at = datetime.strptime(date_match.group(1), '%d/%m/%y at %I:%M %p') if date_match else None
+
+        paid_at = None
+        if date_match:
+            try:
+                paid_at = datetime.strptime(
+                    date_match.group(1),
+                    "%d/%m/%y at %I:%M %p"
+                )
+            except ValueError:
+                paid_at = None
 
         if not code:
             return jsonify({"error": "Could not extract transaction code"}), 400
 
-        # Check for duplicate code
+        # Duplicate check
         existing = supabase.table("payment").select("id").eq("code", code).execute()
+        if getattr(existing, "error", None):
+            return jsonify({"error": "Database error"}), 500
         if existing.data:
-            return jsonify({"status": "duplicate", "message": "Transaction code already exists"}), 200
+            return jsonify({"status": "duplicate"}), 200
 
-        # Insert into Supabase
-        insert_response = supabase.table("payment").insert({
+        # Insert
+        insert = supabase.table("payment").insert({
             "sms": sms_text,
             "code": code,
             "amount": amount,
@@ -1315,13 +1332,14 @@ def receive_payment_sms():
             "paid_at": paid_at
         }).execute()
 
-        if insert_response.data:
-            return jsonify({"status": "success", "inserted": insert_response.data[0]}), 200
-        else:
-            return jsonify({"status": "failed", "error": "Could not insert SMS"}), 500
+        if getattr(insert, "error", None):
+            return jsonify({"error": "Insert failed"}), 500
+
+        return jsonify({"status": "success", "data": insert.data[0]}), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        logger.exception("Payment route error: %s", str(e))
+        return jsonify({"error": "Server error"}), 500
 # -----------------------------
 # JSON error handlers to avoid HTML pages
 # -----------------------------
