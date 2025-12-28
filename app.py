@@ -1280,11 +1280,12 @@ def connect_owner_secure():
 
 
 
+
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
-        data = request.get_json()  # Get JSON from MacroDroid
-        sms_text = data.get("message")  # "message" is the JSON key from MacroDroid
+        data = request.get_json()
+        sms_text = data.get("message")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
@@ -1320,13 +1321,29 @@ def receive_payment_sms():
             elif phone.startswith('+254'):
                 normalized_phone = phone
 
+        # 6️⃣ Extract payment date/time if available (format: DD/MM/YY or DD/MM/YY HH:MM)
+        paid_at_match = re.search(r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2})?)', sms_text)
+        if paid_at_match:
+            paid_at_str = paid_at_match.group(1)
+            try:
+                # Parse with or without time
+                paid_at = datetime.strptime(paid_at_str, '%d/%m/%y %H:%M')
+            except ValueError:
+                try:
+                    paid_at = datetime.strptime(paid_at_str, '%d/%m/%y')
+                except ValueError:
+                    paid_at = datetime.now()
+        else:
+            paid_at = datetime.now()  # fallback to server time
+
         # Insert into Supabase payment table
         insert_response = supabase.table("payment").insert({
             "sms": sms_text,
             "code": code,
             "amount": amount,
             "names": names,
-            "phone": normalized_phone
+            "phone": normalized_phone,
+            "paid_at": paid_at.isoformat()
         }).execute()
 
         if insert_response.data:
@@ -1336,7 +1353,6 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
 
 
 
