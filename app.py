@@ -1357,9 +1357,7 @@ def receive_payment_sms():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-# ============================================================
-# ROUTE: UPDATE PURPOSE TOTALS & DEADLINES FOR ALL DRIVERS
-# ============================================================
+
 @app.route("/admin/update-purposes", methods=["POST"])
 def update_purposes():
     if supabase is None:
@@ -1368,7 +1366,7 @@ def update_purposes():
     try:
         data = request.get_json(force=True) or {}
 
-        # Extract totals and deadlines from request
+        # Extract totals and deadlines
         registration_total = data.get("registration_total")
         registration_deadline = data.get("registration_deadline")
         partner_connection_total = data.get("partner_connection_total")
@@ -1376,7 +1374,7 @@ def update_purposes():
         insurance_total = data.get("insurance_total")
         insurance_deadline = data.get("insurance_deadline")
 
-        # Basic validation
+        # Validate
         required_fields = [
             registration_total, registration_deadline,
             partner_connection_total, partner_connection_deadline,
@@ -1385,7 +1383,7 @@ def update_purposes():
         if any(field is None for field in required_fields):
             return jsonify({"success": False, "error": "All totals and deadlines are required"}), 400
 
-        # Prepare update payload
+        # Update ALL rows in 'dere' table
         update_data = {
             "registration_total": registration_total,
             "registration_deadline": registration_deadline,
@@ -1394,8 +1392,6 @@ def update_purposes():
             "insurance_total": insurance_total,
             "insurance_deadline": insurance_deadline
         }
-
-        # Update ALL rows in 'dere' table
         response = supabase.table("dere").update(update_data).execute()
 
         if getattr(response, "error", None):
