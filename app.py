@@ -1280,6 +1280,7 @@ def connect_owner_secure():
 
 
 
+
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
@@ -1289,14 +1290,19 @@ def receive_payment_sms():
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Extract the code from the start of the SMS (first alphanumeric word)
+        # 1️⃣ Extract the code from the start of the SMS
         code_match = re.match(r'^([A-Z0-9]+)', sms_text)
         code = code_match.group(1) if code_match else None
 
-        # Insert the raw SMS and extracted code into Supabase payment table
+        # 2️⃣ Extract amount after "Ksh"
+        amount_match = re.search(r'Ksh\s*([\d,]+(?:\.\d{2})?)', sms_text)
+        amount = amount_match.group(1) if amount_match else None
+
+        # Insert SMS, code, and amount into Supabase payment table
         insert_response = supabase.table("payment").insert({
             "sms": sms_text,
-            "code": code
+            "code": code,
+            "amount": amount
         }).execute()
 
         if insert_response.data:
@@ -1306,6 +1312,7 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
