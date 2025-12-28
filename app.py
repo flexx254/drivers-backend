@@ -1279,6 +1279,7 @@ def connect_owner_secure():
 
 
 
+
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
@@ -1288,9 +1289,9 @@ def receive_payment_sms():
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # Extract the code (alphanumeric, 9 characters)
-        code_match = re.search(r'\b[A-Z0-9]{9}\b', sms_text)
-        code = code_match.group(0) if code_match else None
+        # Extract the code from the start of the SMS (first alphanumeric word)
+        code_match = re.match(r'^([A-Z0-9]+)', sms_text)
+        code = code_match.group(1) if code_match else None
 
         # Insert the raw SMS and extracted code into Supabase payment table
         insert_response = supabase.table("payment").insert({
@@ -1305,31 +1306,6 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-# -----------------------------
-# JSON error handlers to avoid HTML pages
-# -----------------------------
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not found", "path": request.path}), 404
-
-@app.errorhandler(405)
-def method_not_allowed(e):
-    try:
-        allowed = list(request.url_rule.methods) if request.url_rule else None
-    except Exception:
-        allowed = None
-    return jsonify({"error": "Method not allowed", "allowed": allowed}), 405
-
-@app.errorhandler(413)
-def payload_too_large(e):
-    return jsonify({"error": "Payload too large"}), 413
-
-@app.errorhandler(500)
-def internal_error(e):
-    # log server error
-    logger.exception("Internal server error (global handler): %s", str(e))
-    return jsonify({"error": "Internal server error"}), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
