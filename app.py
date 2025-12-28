@@ -1374,15 +1374,26 @@ def receive_payment_sms():
 @app.route("/admin/get-purposes", methods=["GET"])
 def get_purposes():
     try:
+        # Fetch only the first row
         response = supabase.table("dere").select("*").limit(1).execute()
         logger.info("GET /admin/get-purposes response: %s", response.data)
+
         if getattr(response, "error", None):
             return jsonify({"success": False, "error": str(response.error)}), 500
+
         row = response.data[0] if response.data else {}
+
+        # Convert None dates to empty string for frontend
+        for field in ["registration_deadline", "partner_connection_deadline", "insurance_deadline"]:
+            if row.get(field) is None:
+                row[field] = ""
+
         return jsonify({"success": True, "purposes": row}), 200
+
     except Exception as e:
         logger.exception("Get purposes error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
 
 # ----------------------------
 # UPDATE PURPOSES (ALL ROWS)
@@ -1404,12 +1415,13 @@ def update_purposes():
             if field not in data or data[field] in [None, ""]:
                 return jsonify({"success": False, "error": f"{field} is required"}), 400
 
+        # Prepare update data
         update_data = {
-            "registration_total": data["registration_total"],
-            "registration_deadline": data["registration_deadline"],
-            "partner_connection_total": data["partner_connection_total"],
+            "registration_total": int(data["registration_total"]),
+            "registration_deadline": data["registration_deadline"],  # YYYY-MM-DD format
+            "partner_connection_total": int(data["partner_connection_total"]),
             "partner_connection_deadline": data["partner_connection_deadline"],
-            "insurance_total": data["insurance_total"],
+            "insurance_total": int(data["insurance_total"]),
             "insurance_deadline": data["insurance_deadline"],
         }
 
@@ -1429,7 +1441,6 @@ def update_purposes():
     except Exception as e:
         logger.exception("Admin update purposes error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
