@@ -1323,20 +1323,24 @@ def receive_payment_sms():
             elif phone.startswith('+254'):
                 normalized_phone = phone
 
-        # 6️⃣ Extract payment date/time if available (format: DD/MM/YY or DD/MM/YY HH:MM)
-        paid_at_match = re.search(r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2})?)', sms_text)
+        # 6️⃣ Extract payment date/time (Kenya time)
+        paid_at_match = re.search(
+            r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2})?)',
+            sms_text
+        )
+
         if paid_at_match:
             paid_at_str = paid_at_match.group(1)
             try:
-                # Parse with or without time
                 paid_at = datetime.strptime(paid_at_str, '%d/%m/%y %H:%M')
             except ValueError:
                 try:
                     paid_at = datetime.strptime(paid_at_str, '%d/%m/%y')
                 except ValueError:
-                    paid_at = datetime.now()
+                    paid_at = datetime.now(KENYA_TZ)
+            paid_at = paid_at.replace(tzinfo=KENYA_TZ)
         else:
-            paid_at = datetime.now()  # fallback to server time
+            paid_at = datetime.now(KENYA_TZ)
 
         # Insert into Supabase payment table
         insert_response = supabase.table("payment").insert({
@@ -1355,7 +1359,6 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
 
 
 # ============================================================
