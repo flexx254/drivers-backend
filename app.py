@@ -1280,9 +1280,6 @@ def connect_owner_secure():
 
 
 
-
-
-
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
