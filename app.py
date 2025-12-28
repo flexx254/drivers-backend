@@ -1357,12 +1357,27 @@ def receive_payment_sms():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
+# ----------------------------
+# ROUTE: GET CURRENT PURPOSES
+# ----------------------------
+@app.route("/admin/get-purposes")
+def get_purposes():
+    try:
+        # Get first row from 'dere' table
+        response = supabase.table("dere").select("*").limit(1).execute()
+        if getattr(response, "error", None):
+            return jsonify({"success": False, "error": str(response.error)}), 500
+        row = response.data[0] if response.data else {}
+        return jsonify({"success": True, "purposes": row}), 200
+    except Exception as e:
+        logger.exception("Get purposes error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
 
+# ----------------------------
+# ROUTE: UPDATE PURPOSES (ALL ROWS)
+# ----------------------------
 @app.route("/admin/update-purposes", methods=["POST"])
 def update_purposes():
-    if supabase is None:
-        return jsonify({"success": False, "error": "Database client missing"}), 500
-
     try:
         data = request.get_json(force=True) or {}
 
@@ -1374,7 +1389,7 @@ def update_purposes():
         insurance_total = data.get("insurance_total")
         insurance_deadline = data.get("insurance_deadline")
 
-        # Validate
+        # Validate all fields
         required_fields = [
             registration_total, registration_deadline,
             partner_connection_total, partner_connection_deadline,
@@ -1383,7 +1398,7 @@ def update_purposes():
         if any(field is None for field in required_fields):
             return jsonify({"success": False, "error": "All totals and deadlines are required"}), 400
 
-        # Update ALL rows in 'dere' table
+        # Prepare update payload
         update_data = {
             "registration_total": registration_total,
             "registration_deadline": registration_deadline,
@@ -1392,19 +1407,18 @@ def update_purposes():
             "insurance_total": insurance_total,
             "insurance_deadline": insurance_deadline
         }
-        response = supabase.table("dere").update(update_data).execute()
 
+        # Update ALL rows in 'dere' table
+        response = supabase.table("dere").update(update_data).execute()
         if getattr(response, "error", None):
             return jsonify({"success": False, "error": str(response.error)}), 500
 
-        return jsonify({
-            "success": True,
-            "message": "Purpose totals and deadlines updated for all drivers"
-        }), 200
+        return jsonify({"success": True, "message": "Purpose totals and deadlines updated for all drivers"}), 200
 
     except Exception as e:
         logger.exception("Admin update purposes error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
