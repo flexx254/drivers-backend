@@ -1363,8 +1363,8 @@ def receive_payment_sms():
 @app.route("/admin/get-purposes")
 def get_purposes():
     try:
-        # Get first row from 'dere' table
         response = supabase.table("dere").select("*").limit(1).execute()
+        logger.info("GET /admin/get-purposes response: %s", response.data)
         if getattr(response, "error", None):
             return jsonify({"success": False, "error": str(response.error)}), 500
         row = response.data[0] if response.data else {}
@@ -1380,6 +1380,7 @@ def get_purposes():
 def update_purposes():
     try:
         data = request.get_json(force=True) or {}
+        logger.info("Incoming POST data: %s", data)
 
         # Extract totals and deadlines
         registration_total = data.get("registration_total")
@@ -1396,6 +1397,7 @@ def update_purposes():
             insurance_total, insurance_deadline
         ]
         if any(field is None for field in required_fields):
+            logger.warning("Validation failed: missing fields")
             return jsonify({"success": False, "error": "All totals and deadlines are required"}), 400
 
         # Prepare update payload
@@ -1407,18 +1409,24 @@ def update_purposes():
             "insurance_total": insurance_total,
             "insurance_deadline": insurance_deadline
         }
+        logger.info("Prepared update payload: %s", update_data)
 
         # Update ALL rows in 'dere' table
         response = supabase.table("dere").update(update_data).execute()
+        logger.info("Supabase update response: %s", response.data)
         if getattr(response, "error", None):
+            logger.error("Supabase update error: %s", response.error)
             return jsonify({"success": False, "error": str(response.error)}), 500
 
-        return jsonify({"success": True, "message": "Purpose totals and deadlines updated for all drivers"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Purpose totals and deadlines updated for all drivers",
+            "updated_data": response.data
+        }), 200
 
     except Exception as e:
         logger.exception("Admin update purposes error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
