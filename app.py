@@ -5,6 +5,8 @@ import bcrypt
 import cloudinary
 import cloudinary.uploader
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+KENYA_TZ = ZoneInfo("Africa/Nairobi")
 from io import BytesIO
 import logging
 import json
