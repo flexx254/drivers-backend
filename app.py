@@ -1304,12 +1304,29 @@ def receive_payment_sms():
         )
         names = name_match.group(1).strip() if name_match else None
 
-        # Insert SMS, code, amount, and names into Supabase payment table
+        # 4️⃣ Extract phone number (masked or full)
+        phone_match = re.search(r'\b(\d{6,10}\*{0,4})\b', sms_text)
+        phone = phone_match.group(1) if phone_match else None
+
+        # 5️⃣ Normalize phone number (Kenya)
+        normalized_phone = phone
+        if phone and '*' not in phone:
+            if phone.startswith('07') and len(phone) == 10:
+                normalized_phone = '+254' + phone[1:]
+            elif len(phone) == 9:
+                normalized_phone = '+254' + phone
+            elif phone.startswith('254'):
+                normalized_phone = '+' + phone
+            elif phone.startswith('+254'):
+                normalized_phone = phone
+
+        # Insert into Supabase payment table
         insert_response = supabase.table("payment").insert({
             "sms": sms_text,
             "code": code,
             "amount": amount,
-            "names": names
+            "names": names,
+            "phone": normalized_phone
         }).execute()
 
         if insert_response.data:
@@ -1319,7 +1336,6 @@ def receive_payment_sms():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
 
 
 
