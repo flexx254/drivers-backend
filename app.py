@@ -1367,21 +1367,6 @@ def receive_payment_sms():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-# ----------------------------
-# ROUTE: GET CURRENT PURPOSES
-# ----------------------------
-@app.route("/admin/get-purposes")
-def get_purposes():
-    try:
-        response = supabase.table("dere").select("*").limit(1).execute()
-        logger.info("GET /admin/get-purposes response: %s", response.data)
-        if getattr(response, "error", None):
-            return jsonify({"success": False, "error": str(response.error)}), 500
-        row = response.data[0] if response.data else {}
-        return jsonify({"success": True, "purposes": row}), 200
-    except Exception as e:
-        logger.exception("Get purposes error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500
 
 # ----------------------------
 # ROUTE: UPDATE PURPOSES (ALL ROWS)
@@ -1400,15 +1385,23 @@ def update_purposes():
         insurance_total = data.get("insurance_total")
         insurance_deadline = data.get("insurance_deadline")
 
-        # Validate all fields
-        required_fields = [
-            registration_total, registration_deadline,
-            partner_connection_total, partner_connection_deadline,
-            insurance_total, insurance_deadline
-        ]
-        if any(field is None for field in required_fields):
-            logger.warning("Validation failed: missing fields")
-            return jsonify({"success": False, "error": "All totals and deadlines are required"}), 400
+        # Validate numbers
+        for field_name, value in [
+            ("registration_total", registration_total),
+            ("partner_connection_total", partner_connection_total),
+            ("insurance_total", insurance_total)
+        ]:
+            if not isinstance(value, (int, float)):
+                return jsonify({"success": False, "error": f"{field_name} must be a number"}), 400
+
+        # Validate dates
+        for field_name, date_str in [
+            ("registration_deadline", registration_deadline),
+            ("partner_connection_deadline", partner_connection_deadline),
+            ("insurance_deadline", insurance_deadline)
+        ]:
+            if not validate_date(date_str):
+                return jsonify({"success": False, "error": f"{field_name} must be YYYY-MM-DD"}), 400
 
         # Prepare update payload
         update_data = {
@@ -1437,6 +1430,23 @@ def update_purposes():
     except Exception as e:
         logger.exception("Admin update purposes error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+# ----------------------------
+# ROUTE: GET CURRENT PURPOSES
+# ----------------------------
+@app.route("/admin/get-purposes")
+def get_purposes():
+    try:
+        response = supabase.table("dere").select("*").limit(1).execute()
+        logger.info("GET /admin/get-purposes response: %s", response.data)
+        if getattr(response, "error", None):
+            return jsonify({"success": False, "error": str(response.error)}), 500
+        row = response.data[0] if response.data else {}
+        return jsonify({"success": True, "purposes": row}), 200
+    except Exception as e:
+        logger.exception("Get purposes error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
 # ============================================================
 # RUN APP
 # ============================================================
