@@ -1312,7 +1312,7 @@ def receive_payment_sms():
             "sms": sms_text,
             "code": code,
             "amount": amount,
-            "name": name
+            "names": name
         }).execute()
 
         if insert_response.data:
