@@ -83,6 +83,16 @@ def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
         return False
 
 
+# ----------------------------
+# HELPER: Validate date format
+# ----------------------------
+def validate_date(date_str):
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except (ValueError, TypeError):
+        return False
+
 
 app = Flask(__name__)
 
