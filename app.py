@@ -1466,6 +1466,248 @@ def get_purpose_figures():
     except Exception as e:
         logger.exception("Get purpose figures error")
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@app.route("/verify-payment", methods=["POST"])
+def verify_payment():
+    try:
+        data = request.get_json(force=True)
+        phone = data.get("phone")
+        purpose = data.get("purpose")
+
+        if not phone or not purpose:
+            return jsonify({"status": "error"}), 400
+
+        # 1️⃣ Find latest unused payment
+        payment_resp = (
+            supabase.table("payment")
+            .select("*")
+            .eq("phone", phone)
+            .is_("verification", None)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not payment_resp.data:
+            return jsonify({"status": "pending"}), 200
+
+        payment = payment_resp.data[0]
+        payment_id = payment["id"]
+        amount = float(payment["amount"])
+
+        # 2️⃣ LOCK payment (prevents reuse)
+        lock_resp = (
+            supabase.table("payment")
+            .update({"verification": "processing"})
+            .eq("id", payment_id)
+            .is_("verification", None)
+            .execute()
+        )
+
+        if not lock_resp.data:
+            return jsonify({"status": "used"}), 200
+
+        # 3️⃣ Get purpose totals
+        settings = (
+            supabase.table("purpose_settings")
+            .select("*")
+            .eq("id", 1)
+            .single()
+            .execute()
+        ).data
+
+        total_map = {
+            "registration": settings["registration_total"],
+            "partner_connection": settings["partner_connection_total"],
+            "insurance": settings["insurance_total"],
+        }
+
+        if purpose not in total_map:
+            return jsonify({"status": "error"}), 400
+
+        purpose_total = float(total_map[purpose])
+
+        # 4️⃣ Load or create dere row
+        user_id = session.get("user_id")
+
+        dere_resp = (
+            supabase.table("dere")
+            .select("*")
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+
+        if dere_resp.data:
+            dere = dere_resp.data
+        else:
+            dere = (
+                supabase.table("dere")
+                .insert({
+                    "user_id": user_id,
+                    "registration_paid": 0,
+                    "partner_connection_paid": 0,
+                    "insurance_paid": 0,
+                    "balance": 0
+                })
+                .execute()
+                .data[0]
+            )
+
+        paid_col = f"{purpose}_paid"
+        bal_col = f"{purpose}_balance"
+
+        already_paid = float(dere.get(paid_col, 0))
+        new_paid = already_paid + amount
+        new_balance = purpose_total - new_paid
+
+        excess = 0
+        if new_balance < 0:
+            excess = abs(new_balance)
+            new_balance = 0
+
+        # 5️⃣ Update dere
+        update_data = {
+            paid_col: new_paid,
+            bal_col: new_balance,
+            "balance": float(dere.get("balance", 0)) + excess,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        supabase.table("dere").update(update_data).eq("user_id", user_id).execute()
+
+        # 6️⃣ Finalize payment
+        supabase.table("payment").update({
+            "verification": "confirmed"
+        }).eq("id", payment_id).execute()
+
+        return jsonify({"status": "confirmed"}), 200
+
+    except Exception as e:
+        logger.exception("Verify payment error")
+        return jsonify({"status": "error"}), 500
+
+
+@app.route("/verify-payment", methods=["POST"])
+def verify_payment():
+    try:
+        data = request.get_json(force=True)
+        phone = data.get("phone")
+        purpose = data.get("purpose")
+
+        if not phone or not purpose:
+            return jsonify({"status": "error"}), 400
+
+        # 1️⃣ Find latest unused payment
+        payment_resp = (
+            supabase.table("payment")
+            .select("*")
+            .eq("phone", phone)
+            .is_("verification", None)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not payment_resp.data:
+            return jsonify({"status": "pending"}), 200
+
+        payment = payment_resp.data[0]
+        payment_id = payment["id"]
+        amount = float(payment["amount"])
+
+        # 2️⃣ LOCK payment (prevents reuse)
+        lock_resp = (
+            supabase.table("payment")
+            .update({"verification": "processing"})
+            .eq("id", payment_id)
+            .is_("verification", None)
+            .execute()
+        )
+
+        if not lock_resp.data:
+            return jsonify({"status": "used"}), 200
+
+        # 3️⃣ Get purpose totals
+        settings = (
+            supabase.table("purpose_settings")
+            .select("*")
+            .eq("id", 1)
+            .single()
+            .execute()
+        ).data
+
+        total_map = {
+            "registration": settings["registration_total"],
+            "partner_connection": settings["partner_connection_total"],
+            "insurance": settings["insurance_total"],
+        }
+
+        if purpose not in total_map:
+            return jsonify({"status": "error"}), 400
+
+        purpose_total = float(total_map[purpose])
+
+        # 4️⃣ Load or create dere row
+        user_id = session.get("user_id")
+
+        dere_resp = (
+            supabase.table("dere")
+            .select("*")
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+
+        if dere_resp.data:
+            dere = dere_resp.data
+        else:
+            dere = (
+                supabase.table("dere")
+                .insert({
+                    "user_id": user_id,
+                    "registration_paid": 0,
+                    "partner_connection_paid": 0,
+                    "insurance_paid": 0,
+                    "balance": 0
+                })
+                .execute()
+                .data[0]
+            )
+
+        paid_col = f"{purpose}_paid"
+        bal_col = f"{purpose}_balance"
+
+        already_paid = float(dere.get(paid_col, 0))
+        new_paid = already_paid + amount
+        new_balance = purpose_total - new_paid
+
+        excess = 0
+        if new_balance < 0:
+            excess = abs(new_balance)
+            new_balance = 0
+
+        # 5️⃣ Update dere
+        update_data = {
+            paid_col: new_paid,
+            bal_col: new_balance,
+            "balance": float(dere.get("balance", 0)) + excess,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        supabase.table("dere").update(update_data).eq("user_id", user_id).execute()
+
+        # 6️⃣ Finalize payment
+        supabase.table("payment").update({
+            "verification": "confirmed"
+        }).eq("id", payment_id).execute()
+
+        return jsonify({"status": "confirmed"}), 200
+
+    except Exception as e:
+        logger.exception("Verify payment error")
+        return jsonify({"status": "error"}), 500
 # ============================================================
 # RUN APP
 # ============================================================
