@@ -1368,6 +1368,7 @@ def receive_payment_sms():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
+
 @app.route("/set-purpose-figures", methods=["POST"])
 def set_purpose_figures():
     try:
@@ -1385,7 +1386,6 @@ def set_purpose_figures():
             "insurance_deadline"
         ]
 
-        # Check missing fields
         for field in required_fields:
             if data.get(field) is None:
                 return jsonify({
@@ -1393,7 +1393,6 @@ def set_purpose_figures():
                     "error": f"{field} is required"
                 }), 400
 
-        # Cast totals
         try:
             registration_total = int(data["registration_total"])
             partner_total = int(data["partner_connection_total"])
@@ -1408,23 +1407,32 @@ def set_purpose_figures():
         partner_deadline = data["partner_connection_deadline"]
         insurance_deadline = data["insurance_deadline"]
 
-        # Validate dates
         for date_str in [registration_deadline, partner_deadline, insurance_deadline]:
             datetime.strptime(date_str, "%Y-%m-%d")
 
-        # Upsert ensures row exists
-        resp = supabase.table("purpose_settings").upsert({
-            "id": 1,
+        payload = {
             "registration_total": registration_total,
             "registration_deadline": registration_deadline,
             "partner_connection_total": partner_total,
             "partner_connection_deadline": partner_deadline,
             "insurance_total": insurance_total,
             "insurance_deadline": insurance_deadline
-        }).execute()
+        }
 
-        if getattr(resp, "error", None):
-            return jsonify({"success": False, "error": str(resp.error)}), 500
+        # 1️⃣ Try update first
+        update_resp = supabase.table("purpose_settings") \
+            .update(payload) \
+            .eq("id", 1) \
+            .execute()
+
+        # 2️⃣ If no row updated, insert (WITHOUT id)
+        if not update_resp.data:
+            insert_resp = supabase.table("purpose_settings") \
+                .insert(payload) \
+                .execute()
+
+            if getattr(insert_resp, "error", None):
+                return jsonify({"success": False, "error": str(insert_resp.error)}), 500
 
         return jsonify({
             "success": True,
