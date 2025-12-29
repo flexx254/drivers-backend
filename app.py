@@ -1376,55 +1376,87 @@ def set_purpose_figures():
 
         data = request.get_json(force=True) or {}
 
-        registration_total = data.get("registration_total")
-        registration_deadline = data.get("registration_deadline")
-        partner_total = data.get("partner_connection_total")
-        partner_deadline = data.get("partner_connection_deadline")
-        insurance_total = data.get("insurance_total")
-        insurance_deadline = data.get("insurance_deadline")
+        required_fields = [
+            "registration_total",
+            "registration_deadline",
+            "partner_connection_total",
+            "partner_connection_deadline",
+            "insurance_total",
+            "insurance_deadline"
+        ]
 
-        # Validate inputs
-        if not all([registration_total, registration_deadline, partner_total, partner_deadline, insurance_total, insurance_deadline]):
-            return jsonify({"success": False, "error": "All fields are required"}), 400
+        # Check missing fields
+        for field in required_fields:
+            if data.get(field) is None:
+                return jsonify({
+                    "success": False,
+                    "error": f"{field} is required"
+                }), 400
 
-        # Validate date formats
+        # Cast totals
+        try:
+            registration_total = int(data["registration_total"])
+            partner_total = int(data["partner_connection_total"])
+            insurance_total = int(data["insurance_total"])
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Totals must be numbers"
+            }), 400
+
+        registration_deadline = data["registration_deadline"]
+        partner_deadline = data["partner_connection_deadline"]
+        insurance_deadline = data["insurance_deadline"]
+
+        # Validate dates
         for date_str in [registration_deadline, partner_deadline, insurance_deadline]:
-            try:
-                datetime.strptime(date_str, "%Y-%m-%d")
-            except:
-                return jsonify({"success": False, "error": f"Invalid date format: {date_str}"}), 400
+            datetime.strptime(date_str, "%Y-%m-%d")
 
-        # Update the first row (id=1)
-        update_resp = supabase.table("purpose_settings").update({
+        # Upsert ensures row exists
+        resp = supabase.table("purpose_settings").upsert({
+            "id": 1,
             "registration_total": registration_total,
             "registration_deadline": registration_deadline,
             "partner_connection_total": partner_total,
             "partner_connection_deadline": partner_deadline,
             "insurance_total": insurance_total,
             "insurance_deadline": insurance_deadline
-        }).eq("id", 1).execute()
+        }).execute()
 
-        if getattr(update_resp, "error", None):
-            return jsonify({"success": False, "error": str(update_resp.error)}), 500
+        if getattr(resp, "error", None):
+            return jsonify({"success": False, "error": str(resp.error)}), 500
 
-        return jsonify({"success": True, "message": "Purpose figures updated successfully"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Purpose figures saved successfully"
+        }), 200
 
     except Exception as e:
-        logger.exception("Set purpose figures error: %s", str(e))
+        logger.exception("Set purpose figures error")
         return jsonify({"success": False, "error": "Server error"}), 500
-
 
 @app.route("/get-purpose-figures", methods=["GET"])
 def get_purpose_figures():
     try:
-        resp = supabase.table("purpose_settings").select("*").eq("id", 1).single().execute()
+        if supabase is None:
+            return jsonify({"success": False, "error": "Database client missing"}), 500
+
+        resp = supabase.table("purpose_settings") \
+            .select("*") \
+            .eq("id", 1) \
+            .single() \
+            .execute()
+
         if getattr(resp, "error", None):
             return jsonify({"success": False, "error": str(resp.error)}), 500
 
-        return jsonify({"success": True, "purpose": resp.data}), 200
+        return jsonify({
+            "success": True,
+            "purpose": resp.data
+        }), 200
 
     except Exception as e:
-        logger.exception("Get purpose figures error: %s", str(e))
+        logger.exception("Get purpose figures error")
         return jsonify({"success": False, "error": "Server error"}), 500
 # ============================================================
 # RUN APP
