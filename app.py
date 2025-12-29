@@ -1412,6 +1412,20 @@ def set_purpose_figures():
     except Exception as e:
         logger.exception("Set purpose figures error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@app.route("/get-purpose-figures", methods=["GET"])
+def get_purpose_figures():
+    try:
+        resp = supabase.table("purpose_settings").select("*").eq("id", 1).single().execute()
+        if getattr(resp, "error", None):
+            return jsonify({"success": False, "error": str(resp.error)}), 500
+
+        return jsonify({"success": True, "purpose": resp.data}), 200
+
+    except Exception as e:
+        logger.exception("Get purpose figures error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
 # ============================================================
 # RUN APP
 # ============================================================
