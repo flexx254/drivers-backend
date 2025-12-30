@@ -1708,6 +1708,30 @@ def verify_payment():
     except Exception as e:
         logger.exception("Verify payment error")
         return jsonify({"status": "error"}), 500
+
+@app.route("/create-payment-intent", methods=["POST"])
+def create_payment_intent():
+    data = request.get_json()
+
+    phone = data.get("phone")
+    purpose = data.get("purpose")
+
+    if not phone or not purpose:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    result = supabase.table("payment_intent").insert({
+        "phone": phone,
+        "purpose": purpose,
+        "status": "pending",
+        "user_id": None
+    }).execute()
+
+    intent_id = result.data[0]["id"]
+
+    return jsonify({
+        "status": "ok",
+        "intent_id": intent_id
+    })
 # ============================================================
 # RUN APP
 # ============================================================
