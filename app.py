@@ -1488,6 +1488,108 @@ def create_payment_intent():
         "status": "ok",
         "id": result.data[0]["id"]
     })
+
+
+
+# -------------------------
+# CREATE PAYMENT INTENT
+# -------------------------
+@app.route("/create-payment-intent", methods=["POST", "OPTIONS"])
+def create_payment_intent():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+
+    data = request.get_json()
+    phone = data.get("phone")
+    purpose = data.get("purpose")
+
+    if not phone or not purpose:
+        return jsonify({"error": "Missing fields"}), 400
+
+    # Insert into payment_intent table
+    result = supabase.table("payment_intent").insert({
+        "phone": phone,
+        "purpose": purpose
+    }).execute()
+
+    intent_id = result.data[0]["id"]
+    return jsonify({"status": "ok", "intent_id": intent_id})
+
+# -------------------------
+# BACKGROUND PROCESSING
+# -------------------------
+def process_payment_intents():
+    while True:
+        try:
+            # 1️⃣ Get all payment intents
+            intents = supabase.table("payment_intent").select("*").execute().data
+
+            for intent in intents:
+                phone = intent["phone"]
+                purpose = intent["purpose"]
+
+                # 2️⃣ Find payment with same phone not yet confirmed
+                payment_resp = supabase.table("payment") \
+                    .select("*") \
+                    .eq("phone", phone) \
+                    .neq("verification", "confirmed") \
+                    .execute()
+                
+                payments = payment_resp.data
+                if not payments:
+                    continue  # No new payment, skip
+
+                payment = payments[0]
+                amount = float(payment["amount"])
+
+                # 3️⃣ Get purpose settings
+                settings_resp = supabase.table("purpose_settings").select("*").single().execute()
+                settings = settings_resp.data
+
+                # 4️⃣ Get dere table row
+                dere_resp = supabase.table("dere").select("*").single().execute()
+                dere = dere_resp.data
+
+                # 5️⃣ Update balances and paid amounts
+                updates = {}
+                if purpose == "registration":
+                    new_paid = dere["registration_paid"] + amount
+                    updates["registration_paid"] = new_paid
+                    updates["registration_balance"] = settings["registration_total"] - new_paid
+                elif purpose == "partner_connection":
+                    new_paid = dere["partner_connection_paid"] + amount
+                    updates["partner_connection_paid"] = new_paid
+                    updates["partner_connection_balance"] = settings["partner_connection_total"] - new_paid
+                elif purpose == "insurance":
+                    new_paid = dere["insurance_paid"] + amount
+                    updates["insurance_paid"] = new_paid
+                    updates["insurance_balance"] = settings["insurance_total"] - new_paid
+                else:
+                    continue  # Unknown purpose
+
+                # 6️⃣ Update dere table
+                supabase.table("dere").update(updates).execute()
+
+                # 7️⃣ Mark payment as confirmed
+                supabase.table("payment").update({"verification": "confirmed"}) \
+                    .eq("phone", phone) \
+                    .execute()
+
+        except Exception as e:
+            print("Error processing payment intents:", e)
+
+        # Wait a few seconds before checking again
+        time.sleep(5)
+
+# Start background thread
+threading.Thread(target=process_payment_intents, daemon=True).start()
+
+# -------------------------
+# HEALTH CHECK
+# -------------------------
+@app.route("/health")
+def health():
+    return jsonify({"status": "Payment intent processor running"})
 # ============================================================
 # RUN APP
 # ============================================================
