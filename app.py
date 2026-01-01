@@ -1467,7 +1467,27 @@ def get_purpose_figures():
         logger.exception("Get purpose figures error")
         return jsonify({"success": False, "error": "Server error"}), 500
 
+@app.route("/create-payment-intent", methods=["POST", "OPTIONS"])
+def create_payment_intent():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
 
+    data = request.get_json()
+    phone = data.get("phone")
+    purpose = data.get("purpose")
+
+    if not phone or not purpose:
+        return jsonify({"error": "Missing fields"}), 400
+
+    result = supabase.table("payment_intent").insert({
+        "phone": phone,
+        "purpose": purpose
+    }).execute()
+
+    return jsonify({
+        "status": "ok",
+        "id": result.data[0]["id"]
+    })
 # ============================================================
 # RUN APP
 # ============================================================
