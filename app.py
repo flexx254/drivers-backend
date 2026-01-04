@@ -947,13 +947,16 @@ def register_owner():
         full_name = (request.form.get("full_name") or "").strip()
         phone = (request.form.get("phone_number") or "").strip()
         plate = (request.form.get("number_plate") or "").strip()
-        car_make = (request.form.get("car_make") or "").strip()       # NEW
-        car_model = (request.form.get("car_model") or "").strip()     # NEW
+        car_make = (request.form.get("car_make") or "").strip()
+        car_model = (request.form.get("car_model") or "").strip()
+
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm_password") or ""
 
         car_image = request.files.get("car_image")
         logbook = request.files.get("logbook")
         inspection = request.files.get("inspection_report")
-        uber_report = request.files.get("uber_report")  # optional
+        uber_report = request.files.get("uber_report")
 
         # -----------------------------
         # 2. Validate required fields
@@ -967,12 +970,30 @@ def register_owner():
         if not plate:
             return jsonify({"success": False, "error": "Number plate is required"}), 400
 
-        if not car_make:
-            return jsonify({"success": False, "error": "Car make is required"}), 400   # NEW
+        if not car_make or not car_model:
+            return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
-        if not car_model:
-            return jsonify({"success": False, "error": "Car model is required"}), 400  # NEW
+        # -----------------------------
+        # 3. Password validation
+        # -----------------------------
+        if not password:
+            return jsonify({"success": False, "error": "Password is required"}), 400
 
+        if not confirm:
+            return jsonify({"success": False, "error": "Confirm password is required"}), 400
+
+        if password != confirm:
+            return jsonify({"success": False, "error": "Passwords do not match"}), 400
+
+        ok, msg = check_password_strength(password)
+        if not ok:
+            return jsonify({"success": False, "error": msg}), 400
+
+        password_hash = hash_password(password)
+
+        # -----------------------------
+        # 4. Plate validation
+        # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
             return jsonify({"success": False, "error": "Invalid number plate"}), 400
@@ -981,19 +1002,11 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 3. Upload helper (safe)
+        # 5. Upload helper
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
                 raise ValueError("Invalid file format")
-
-            if file.mimetype == "application/pdf":
-                upload = cloudinary.uploader.upload(
-                    file,
-                    folder=folder,
-                    resource_type="auto"
-                )
-                return upload.get("secure_url")
 
             image = Image.open(file)
             if image.mode in ("RGBA", "P"):
@@ -1011,7 +1024,7 @@ def register_owner():
             return upload.get("secure_url")
 
         # -----------------------------
-        # 4. Upload files
+        # 6. Upload files
         # -----------------------------
         car_image_url = upload_doc(car_image, "owner/car")
         logbook_url = upload_doc(logbook, "owner/logbook")
@@ -1019,14 +1032,15 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 5. Insert into Supabase
+        # 7. Insert into Supabase
         # -----------------------------
         insert = supabase.table("owner").insert({
             "full_name": full_name,
             "phone_number": phone,
             "number_plate": normalized_plate,
-            "car_make": car_make,             # NEW
-            "car_model": car_model,           # NEW
+            "car_make": car_make,
+            "car_model": car_model,
+            "password_hash": password_hash,
             "car_image_url": car_image_url,
             "logbook_url": logbook_url,
             "inspection_report_url": inspection_url,
@@ -1046,8 +1060,8 @@ def register_owner():
 
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500
-
+        return jsonify({"success": False, "error": "Server error"}), 500 
+             
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
     try:
