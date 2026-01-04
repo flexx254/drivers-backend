@@ -947,11 +947,8 @@ def register_owner():
         full_name = (request.form.get("full_name") or "").strip()
         phone = (request.form.get("phone_number") or "").strip()
         plate = (request.form.get("number_plate") or "").strip()
-        car_make = (request.form.get("car_make") or "").strip()
-        car_model = (request.form.get("car_model") or "").strip()
-
-        password = request.form.get("password") or ""
-        confirm_password = request.form.get("confirm_password") or ""
+        car_make = (request.form.get("car_make") or "").strip()       # NEW
+        car_model = (request.form.get("car_model") or "").strip()     # NEW
 
         car_image = request.files.get("car_image")
         logbook = request.files.get("logbook")
@@ -971,25 +968,10 @@ def register_owner():
             return jsonify({"success": False, "error": "Number plate is required"}), 400
 
         if not car_make:
-            return jsonify({"success": False, "error": "Car make is required"}), 400
+            return jsonify({"success": False, "error": "Car make is required"}), 400   # NEW
 
         if not car_model:
-            return jsonify({"success": False, "error": "Car model is required"}), 400
-
-        # -----------------------------
-        # Password validation
-        # -----------------------------
-        if not password or len(password) < 8:
-            return jsonify({
-                "success": False,
-                "error": "Password must be at least 8 characters long"
-            }), 400
-
-        if password != confirm_password:
-            return jsonify({
-                "success": False,
-                "error": "Passwords do not match"
-            }), 400
+            return jsonify({"success": False, "error": "Car model is required"}), 400  # NEW
 
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
@@ -999,15 +981,7 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 3. Hash password
-        # -----------------------------
-        password_hash = bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt()
-        ).decode("utf-8")
-
-        # -----------------------------
-        # 4. Upload helper (safe)
+        # 3. Upload helper (safe)
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1037,7 +1011,7 @@ def register_owner():
             return upload.get("secure_url")
 
         # -----------------------------
-        # 5. Upload files
+        # 4. Upload files
         # -----------------------------
         car_image_url = upload_doc(car_image, "owner/car")
         logbook_url = upload_doc(logbook, "owner/logbook")
@@ -1045,15 +1019,14 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 6. Insert into Supabase
+        # 5. Insert into Supabase
         # -----------------------------
         insert = supabase.table("owner").insert({
             "full_name": full_name,
             "phone_number": phone,
             "number_plate": normalized_plate,
-            "car_make": car_make,
-            "car_model": car_model,
-            "password_hash": password_hash,
+            "car_make": car_make,             # NEW
+            "car_model": car_model,           # NEW
             "car_image_url": car_image_url,
             "logbook_url": logbook_url,
             "inspection_report_url": inspection_url,
