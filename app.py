@@ -97,6 +97,17 @@ def validate_date(date_str):
         return False
 
 
+
+def hash_password(password: str) -> str:
+    if not password:
+        raise ValueError("Empty password cannot be hashed")
+
+    hashed = bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt()
+    )
+    return hashed.decode("utf-8")
+
 app = Flask(__name__)
 
 # -----------------------------
