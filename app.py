@@ -991,6 +991,14 @@ def register_owner():
 
         password_hash = hash_password(password)
 
+        # 🔒 ADDED: confirm password_hash was actually generated
+        if not password_hash or not isinstance(password_hash, str):
+            logger.error("Password hashing failed. Hash value: %s", password_hash)
+            return jsonify({
+                "success": False,
+                "error": "Failed to securely process password"
+            }), 500
+
         # -----------------------------
         # 4. Plate validation
         # -----------------------------
@@ -1034,7 +1042,7 @@ def register_owner():
         # -----------------------------
         # 7. Insert into Supabase
         # -----------------------------
-        insert = supabase.table("owner").insert({
+        response = supabase.table("owner").insert({
             "full_name": full_name,
             "phone_number": phone,
             "number_plate": normalized_plate,
@@ -1047,8 +1055,32 @@ def register_owner():
             "uber_report_url": uber_url
         }).execute()
 
-        if getattr(insert, "error", None):
-            return jsonify({"success": False, "error": "Database insert failed"}), 500
+        # 🔒 ADDED: proper Supabase error detection
+        if response.error:
+            logger.error("Supabase insert error: %s", response.error.message)
+            return jsonify({
+                "success": False,
+                "error": response.error.message
+            }), 500
+
+        if not response.data:
+            logger.error("Supabase insert failed: no data returned")
+            return jsonify({
+                "success": False,
+                "error": "Database insert failed"
+            }), 500
+
+        # 🔒 ADDED: confirm password_hash actually stored
+        inserted_row = response.data[0]
+        if not inserted_row.get("password_hash"):
+            logger.critical(
+                "password_hash missing after insert. Owner ID: %s",
+                inserted_row.get("id")
+            )
+            return jsonify({
+                "success": False,
+                "error": "Password was not saved. Please contact support."
+            }), 500
 
         return jsonify({
             "success": True,
@@ -1060,7 +1092,7 @@ def register_owner():
 
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500 
+        return jsonify({"success": False, "error": "Server error"}), 500     
              
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
