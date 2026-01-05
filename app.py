@@ -949,6 +949,8 @@ def update_sacco():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+
+
 @app.route("/register-owner", methods=["POST"])
 def register_owner():
     try:
@@ -1000,9 +1002,16 @@ def register_owner():
         if not ok:
             return jsonify({"success": False, "error": msg}), 400
 
+        # -----------------------------
+        # 3.1 Hash password
+        # -----------------------------
         password_hash = hash_password(password)
 
-        # 🔒 ADDED: confirm password_hash was actually generated
+        # 🔍 DEBUG LOGS (AS REQUESTED)
+        logger.warning("PASSWORD LEN = %s", len(password))
+        logger.warning("PASSWORD HASH = %s", password_hash)
+
+        # 🔒 Confirm hash validity
         if not password_hash or not isinstance(password_hash, str):
             logger.error("Password hashing failed. Hash value: %s", password_hash)
             return jsonify({
@@ -1030,6 +1039,7 @@ def register_owner():
             image = Image.open(file)
             if image.mode in ("RGBA", "P"):
                 image = image.convert("RGB")
+
             image.thumbnail((1200, 1200))
             buffer = BytesIO()
             image.save(buffer, format="JPEG", quality=85)
@@ -1066,7 +1076,6 @@ def register_owner():
             "uber_report_url": uber_url
         }).execute()
 
-        # 🔒 ADDED: proper Supabase error detection
         if response.error:
             logger.error("Supabase insert error: %s", response.error.message)
             return jsonify({
@@ -1081,7 +1090,6 @@ def register_owner():
                 "error": "Database insert failed"
             }), 500
 
-        # 🔒 ADDED: confirm password_hash actually stored
         inserted_row = response.data[0]
         if not inserted_row.get("password_hash"):
             logger.critical(
@@ -1103,7 +1111,7 @@ def register_owner():
 
     except Exception as e:
         logger.exception("Owner registration error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500     
+        return jsonify({"success": False, "error": "Server error"}), 500   
              
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
