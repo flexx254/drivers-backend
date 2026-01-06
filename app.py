@@ -955,24 +955,26 @@ def update_sacco():
 def register_owner():
     try:
         # -----------------------------
-        # 1. Read form fields
+        # 1. Read inputs ONCE
         # -----------------------------
-        full_name = (request.form.get("full_name") or "").strip()
-        phone = (request.form.get("phone_number") or "").strip()
-        plate = (request.form.get("number_plate") or "").strip()
-        car_make = (request.form.get("car_make") or "").strip()
-        car_model = (request.form.get("car_model") or "").strip()
+        form = request.form
+        files = request.files
 
-        password = request.form.get("password") or ""
-        confirm = request.form.get("confirm_password") or ""
+        full_name = (form.get("full_name") or "").strip()
+        phone = (form.get("phone_number") or "").strip()
+        plate = (form.get("number_plate") or "").strip()
+        car_make = (form.get("car_make") or "").strip()
+        car_model = (form.get("car_model") or "").strip()
+        password = form.get("password") or ""
+        confirm = form.get("confirm_password") or ""
 
-        car_image = request.files.get("car_image")
-        logbook = request.files.get("logbook")
-        inspection = request.files.get("inspection_report")
-        uber_report = request.files.get("uber_report")
+        car_image = files.get("car_image")
+        logbook = files.get("logbook")
+        inspection = files.get("inspection_report")
+        uber_report = files.get("uber_report")
 
         # -----------------------------
-        # 2. Validate required fields
+        # 2. Required field validation
         # -----------------------------
         if not full_name:
             return jsonify({"success": False, "error": "Full name is required"}), 400
@@ -987,7 +989,7 @@ def register_owner():
             return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
         # -----------------------------
-        # 3. Password validation
+        # 3. Password validation (SAME STYLE AS /register)
         # -----------------------------
         if not password:
             return jsonify({"success": False, "error": "Password is required"}), 400
@@ -1003,24 +1005,19 @@ def register_owner():
             return jsonify({"success": False, "error": msg}), 400
 
         # -----------------------------
-        # 3.1 Hash password
+        # 4. Hash password (GUARANTEED STRING)
         # -----------------------------
-        password_hash = hash_password(password)
-
-        # 🔍 DEBUG LOGS (AS REQUESTED)
-        logger.warning("PASSWORD LEN = %s", len(password))
-        logger.warning("PASSWORD HASH = %s", password_hash)
-
-        # 🔒 Confirm hash validity
-        if not password_hash or not isinstance(password_hash, str):
-            logger.error("Password hashing failed. Hash value: %s", password_hash)
-            return jsonify({
-                "success": False,
-                "error": "Failed to securely process password"
-            }), 500
+        try:
+            password_hash = bcrypt.hashpw(
+                password.encode("utf-8"),
+                bcrypt.gensalt()
+            ).decode("utf-8")
+        except Exception as e:
+            logger.exception("Password hashing failed: %s", e)
+            return jsonify({"success": False, "error": "Server error hashing password"}), 500
 
         # -----------------------------
-        # 4. Plate validation
+        # 5. Plate validation
         # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
@@ -1030,7 +1027,7 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 5. Upload helper
+        # 6. Upload files (SIDE EFFECTS LAST)
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1052,18 +1049,15 @@ def register_owner():
             )
             return upload.get("secure_url")
 
-        # -----------------------------
-        # 6. Upload files
-        # -----------------------------
         car_image_url = upload_doc(car_image, "owner/car")
         logbook_url = upload_doc(logbook, "owner/logbook")
         inspection_url = upload_doc(inspection, "owner/inspection")
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 7. Insert into Supabase
+        # 7. Build INSERT PAYLOAD (CRITICAL STEP)
         # -----------------------------
-        response = supabase.table("owner").insert({
+        payload = {
             "full_name": full_name,
             "phone_number": phone,
             "number_plate": normalized_plate,
@@ -1074,32 +1068,21 @@ def register_owner():
             "logbook_url": logbook_url,
             "inspection_report_url": inspection_url,
             "uber_report_url": uber_url
-        }).execute()
+        }
 
-        if response.error:
-            logger.error("Supabase insert error: %s", response.error.message)
-            return jsonify({
-                "success": False,
-                "error": response.error.message
-            }), 500
+        logger.warning("OWNER INSERT PAYLOAD: %s", payload)
+
+        # -----------------------------
+        # 8. Supabase insert (SAME DEFENSE AS /register)
+        # -----------------------------
+        response = supabase.table("owner").insert(payload).execute()
+
+        if getattr(response, "error", None):
+            logger.error("Supabase insert error: %s", response.error)
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
 
         if not response.data:
-            logger.error("Supabase insert failed: no data returned")
-            return jsonify({
-                "success": False,
-                "error": "Database insert failed"
-            }), 500
-
-        inserted_row = response.data[0]
-        if not inserted_row.get("password_hash"):
-            logger.critical(
-                "password_hash missing after insert. Owner ID: %s",
-                inserted_row.get("id")
-            )
-            return jsonify({
-                "success": False,
-                "error": "Password was not saved. Please contact support."
-            }), 500
+            return jsonify({"success": False, "error": "Insert returned no data"}), 500
 
         return jsonify({
             "success": True,
@@ -1110,8 +1093,8 @@ def register_owner():
         return jsonify({"success": False, "error": str(ve)}), 400
 
     except Exception as e:
-        logger.exception("Owner registration error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500   
+        logger.exception("Owner registration error: %s", e)
+        return jsonify({"success": False, "error": "Server error"}), 500 
              
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
