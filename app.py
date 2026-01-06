@@ -1075,7 +1075,12 @@ def register_owner():
         # -----------------------------
         # 8. Supabase insert (SAME DEFENSE AS /register)
         # -----------------------------
-        response = supabase.table("owner").insert(payload).execute()
+        response = supabase.table("owner").insert({
+    "password_hash": password_hash
+}).execute()
+
+logger.warning("TEST INSERT RESPONSE DATA: %s", response.data)
+logger.warning("TEST INSERT RESPONSE ERROR: %s", response.error)
 
         if getattr(response, "error", None):
             logger.error("Supabase insert error: %s", response.error)
