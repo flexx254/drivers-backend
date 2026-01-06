@@ -950,7 +950,6 @@ def update_sacco():
 
 
 
-
 @app.route("/register-owner", methods=["POST"])
 def register_owner():
     try:
@@ -988,9 +987,6 @@ def register_owner():
         if not car_make or not car_model:
             return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
-        # -----------------------------
-        # 3. Password validation (SAME STYLE AS /register)
-        # -----------------------------
         if not password:
             return jsonify({"success": False, "error": "Password is required"}), 400
 
@@ -1005,19 +1001,16 @@ def register_owner():
             return jsonify({"success": False, "error": msg}), 400
 
         # -----------------------------
-        # 4. Hash password (GUARANTEED STRING)
+        # 3. Hash password
         # -----------------------------
         try:
-            password_hash = bcrypt.hashpw(
-                password.encode("utf-8"),
-                bcrypt.gensalt()
-            ).decode("utf-8")
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         except Exception as e:
             logger.exception("Password hashing failed: %s", e)
             return jsonify({"success": False, "error": "Server error hashing password"}), 500
 
         # -----------------------------
-        # 5. Plate validation
+        # 4. Plate validation
         # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
@@ -1027,7 +1020,7 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 6. Upload files (SIDE EFFECTS LAST)
+        # 5. Upload files
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1042,11 +1035,7 @@ def register_owner():
             image.save(buffer, format="JPEG", quality=85)
             buffer.seek(0)
 
-            upload = cloudinary.uploader.upload(
-                buffer,
-                folder=folder,
-                resource_type="image"
-            )
+            upload = cloudinary.uploader.upload(buffer, folder=folder, resource_type="image")
             return upload.get("secure_url")
 
         car_image_url = upload_doc(car_image, "owner/car")
@@ -1055,7 +1044,7 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 7. Build INSERT PAYLOAD (CRITICAL STEP)
+        # 6. Build INSERT payload
         # -----------------------------
         payload = {
             "full_name": full_name,
@@ -1073,9 +1062,9 @@ def register_owner():
         logger.warning("OWNER INSERT PAYLOAD: %s", payload)
 
         # -----------------------------
-        # 8. Supabase insert (SAME DEFENSE AS /register)
+        # 7. Insert into Supabase
         # -----------------------------
-        # response = supabase.table("owner").insert(payload).execute()
+        response = supabase.table("owner").insert(payload).execute()
 
         if getattr(response, "error", None):
             logger.error("Supabase insert error: %s", response.error)
@@ -1084,18 +1073,14 @@ def register_owner():
         if not response.data:
             return jsonify({"success": False, "error": "Insert returned no data"}), 500
 
-        return jsonify({
-            "success": True,
-            "message": "Car owner registered successfully"
-        }), 200
+        return jsonify({"success": True, "message": "Car owner registered successfully"}), 200
 
     except ValueError as ve:
         return jsonify({"success": False, "error": str(ve)}), 400
 
     except Exception as e:
         logger.exception("Owner registration error: %s", e)
-        return jsonify({"success": False, "error": "Server error"}), 500 
-             
+        return jsonify({"success": False, "error": "Server error"}), 500
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
     try:
