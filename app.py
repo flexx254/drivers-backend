@@ -1061,7 +1061,10 @@ def register_owner():
 
         logger.warning("OWNER INSERT PAYLOAD: %s", payload)
         print("INSERT PAYLOAD KEYS:", data.keys())
-        print("PASSWORD HASH VALUE:", data.get("password_hash")) 
+        print("PASSWORD HASH VALUE:", data.get("password_hash"))
+        print("TYPE:", type(password_hash))
+        print("LEN:", len(password_hash) if password_hash else "NONE")
+        print("VALUE:", repr(password_hash))
 
         # -----------------------------
         # 7. Insert into Supabase
