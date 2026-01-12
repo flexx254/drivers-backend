@@ -1086,6 +1086,106 @@ def register_owner():
     except Exception as e:
         logger.exception("Owner registration error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
+
+@app.route("/partner-reg", methods=["POST"])
+def partner_reg():
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except Exception as e:
+        logger.exception("Failed to parse JSON body: %s", str(e))
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    # -----------------------------
+    # FIELDS
+    # -----------------------------
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    phone = (data.get("phone_number") or "").strip()
+    password = data.get("password") or ""
+    confirm = data.get("confirm") or ""
+
+    # -----------------------------
+    # REQUIRED FIELDS
+    # -----------------------------
+    if not name:
+        return jsonify({"success": False, "error": "Name is required"}), 400
+
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+
+    if not phone:
+        return jsonify({"success": False, "error": "Phone number is required"}), 400
+
+    # -----------------------------
+    # EMAIL FORMAT
+    # -----------------------------
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"success": False, "error": "Invalid email address"}), 400
+
+    # -----------------------------
+    # PHONE FORMAT (+254XXXXXXXXX)
+    # -----------------------------
+    if not re.match(r"^\+254\d{9}$", phone):
+        return jsonify(
+            {"success": False, "error": "Phone must be in +254XXXXXXXXX format"}), 400
+
+    # -----------------------------
+    # PASSWORD VALIDATION
+    # -----------------------------
+    if not password:
+        return jsonify({"success": False, "error": "Password is required"}), 400
+
+    if not confirm:
+        return jsonify({"success": False, "error": "Confirm password is required"}), 400
+
+    if password != confirm:
+        return jsonify({"success": False, "error": "Passwords do not match"}), 400
+
+    ok, msg = check_password_strength(password)
+    if not ok:
+        return jsonify({"success": False, "error": msg}), 400
+
+    # -----------------------------
+    # HASH PASSWORD
+    # -----------------------------
+    try:
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    except Exception as e:
+        logger.exception("Password hashing failed: %s", str(e))
+        return jsonify({"success": False, "error": "Server error hashing password"}), 500
+
+    # -----------------------------
+    # DB CLIENT CHECK
+    # -----------------------------
+    if supabase is None:
+        return jsonify({"success": False, "error": "Database client missing"}), 500
+
+    # -----------------------------
+    # INSERT INTO partners table
+    # -----------------------------
+    try:
+        response = supabase.table("partner").insert({
+            "full_name": name,
+            "email": email,
+            "password_hash": hashed,
+            "phone_number": phone
+        }).execute()
+
+        resp_error = getattr(response, "error", None)
+        if resp_error:
+            logger.error("Supabase insert error: %s", resp_error)
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Registration successful. Check your email to continue."
+        }), 200
+
+    except Exception as e:
+        logger.exception("Unexpected supabase insert error: %s", str(e))
+        return jsonify(
+            {"success": False, "error": "Internal server error during registration"}), 500
+
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
     try:
