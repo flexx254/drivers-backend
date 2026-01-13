@@ -987,11 +987,8 @@ def register_owner():
         if not car_make or not car_model:
             return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
-        if not password:
-            return jsonify({"success": False, "error": "Password is required"}), 400
-
-        if not confirm:
-            return jsonify({"success": False, "error": "Confirm password is required"}), 400
+        if not password or not confirm:
+            return jsonify({"success": False, "error": "Password and confirmation required"}), 400
 
         if password != confirm:
             return jsonify({"success": False, "error": "Passwords do not match"}), 400
@@ -1004,7 +1001,10 @@ def register_owner():
         # 3. Hash password
         # -----------------------------
         try:
-            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            password_hash = bcrypt.hashpw(
+                password.encode("utf-8"),
+                bcrypt.gensalt()
+            ).decode("utf-8")
         except Exception as e:
             logger.exception("Password hashing failed: %s", e)
             return jsonify({"success": False, "error": "Server error hashing password"}), 500
@@ -1020,7 +1020,7 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 5. Upload files
+        # 5. Upload helper
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1035,8 +1035,12 @@ def register_owner():
             image.save(buffer, format="JPEG", quality=85)
             buffer.seek(0)
 
-            upload = cloudinary.uploader.upload(buffer, folder=folder, resource_type="image")
-            return upload.get("secure_url")
+            result = cloudinary.uploader.upload(
+                buffer,
+                folder=folder,
+                resource_type="image"
+            )
+            return result.get("secure_url")
 
         car_image_url = upload_doc(car_image, "owner/car")
         logbook_url = upload_doc(logbook, "owner/logbook")
@@ -1059,12 +1063,11 @@ def register_owner():
             "uber_report_url": uber_url
         }
 
-        logger.warning("OWNER INSERT PAYLOAD: %s", payload)
-        print("INSERT PAYLOAD KEYS:", data.keys())
-        print("PASSWORD HASH VALUE:", data.get("password_hash"))
-        print("TYPE:", type(password_hash))
-        print("LEN:", len(password_hash) if password_hash else "NONE")
-        print("VALUE:", repr(password_hash))
+        # ✅ SAFE DEBUG LOGS
+        logger.info("INSERT PAYLOAD KEYS: %s", list(payload.keys()))
+        logger.info("PASSWORD HASH TYPE: %s", type(password_hash))
+        logger.info("PASSWORD HASH LENGTH: %s", len(password_hash))
+        logger.debug("PASSWORD HASH VALUE (repr): %r", password_hash)
 
         # -----------------------------
         # 7. Insert into Supabase
@@ -1078,7 +1081,10 @@ def register_owner():
         if not response.data:
             return jsonify({"success": False, "error": "Insert returned no data"}), 500
 
-        return jsonify({"success": True, "message": "Car owner registered successfully"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Car owner registered successfully"
+        }), 200
 
     except ValueError as ve:
         return jsonify({"success": False, "error": str(ve)}), 400
