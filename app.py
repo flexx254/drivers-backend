@@ -964,8 +964,10 @@ def register_owner():
         plate = (form.get("number_plate") or "").strip()
         car_make = (form.get("car_make") or "").strip()
         car_model = (form.get("car_model") or "").strip()
-        password = form.get("password") or ""
-        confirm = form.get("confirm_password") or ""
+
+        # 🔐 PASSWORD — SAME BEHAVIOR AS /register
+        password = (form.get("password") or "").strip()
+        confirm = (form.get("confirm_password") or "").strip()
 
         car_image = files.get("car_image")
         logbook = files.get("logbook")
@@ -987,8 +989,14 @@ def register_owner():
         if not car_make or not car_model:
             return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
-        if not password or not confirm:
-            return jsonify({"success": False, "error": "Password and confirmation required"}), 400
+        # -----------------------------
+        # 3. PASSWORD VALIDATION (IDENTICAL TO /register)
+        # -----------------------------
+        if not password:
+            return jsonify({"success": False, "error": "Password is required"}), 400
+
+        if not confirm:
+            return jsonify({"success": False, "error": "Confirm password is required"}), 400
 
         if password != confirm:
             return jsonify({"success": False, "error": "Passwords do not match"}), 400
@@ -997,9 +1005,6 @@ def register_owner():
         if not ok:
             return jsonify({"success": False, "error": msg}), 400
 
-        # -----------------------------
-        # 3. Hash password
-        # -----------------------------
         try:
             password_hash = bcrypt.hashpw(
                 password.encode("utf-8"),
@@ -1008,6 +1013,11 @@ def register_owner():
         except Exception as e:
             logger.exception("Password hashing failed: %s", e)
             return jsonify({"success": False, "error": "Server error hashing password"}), 500
+
+        # 🔒 Freeze guarantee (defensive, optional but recommended)
+        if not isinstance(password_hash, str) or len(password_hash) < 20:
+            logger.error("Invalid password hash generated")
+            return jsonify({"success": False, "error": "Invalid password hash"}), 500
 
         # -----------------------------
         # 4. Plate validation
@@ -1063,11 +1073,8 @@ def register_owner():
             "uber_report_url": uber_url
         }
 
-        # ✅ SAFE DEBUG LOGS
         logger.info("INSERT PAYLOAD KEYS: %s", list(payload.keys()))
-        logger.info("PASSWORD HASH TYPE: %s", type(password_hash))
         logger.info("PASSWORD HASH LENGTH: %s", len(password_hash))
-        logger.debug("PASSWORD HASH VALUE (repr): %r", password_hash)
 
         # -----------------------------
         # 7. Insert into Supabase
