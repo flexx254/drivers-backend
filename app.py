@@ -1744,6 +1744,39 @@ threading.Thread(target=process_payment_intents, daemon=True).start()
 @app.route("/health")
 def health():
     return jsonify({"status": "Payment intent processor running"})
+
+
+@app.route("/test-password", methods=["POST"])
+def test_password():
+    try:
+        password = (request.form.get("password") or "").strip()
+
+        if not password:
+            return jsonify({"error": "Password missing"}), 400
+
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        payload = {
+            "password_hash": password_hash
+        }
+
+        # 🔍 HARD PROOF LOGS
+        logger.critical("TEST HASH >>> %r", password_hash)
+        logger.critical("TEST HASH LENGTH >>> %d", len(password_hash))
+
+        res = supabase.table("owner").insert(payload).execute()
+
+        return jsonify({
+            "success": True,
+            "hash_length": len(password_hash)
+        }), 200
+
+    except Exception as e:
+        logger.exception("Test password insert failed")
+        return jsonify({"error": "Server error"}), 500
 # ============================================================
 # RUN APP
 # ============================================================
