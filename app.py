@@ -1777,6 +1777,66 @@ def test_password():
     except Exception as e:
         logger.exception("Test password insert failed")
         return jsonify({"error": "Server error"}), 500
+
+
+@app.route("/register-owner-basic", methods=["POST"])
+def register_owner_basic():
+    try:
+        data = request.get_json(force=True) or {}
+
+        full_name = (data.get("full_name") or "").strip()
+        phone = (data.get("phone_number") or "").strip()
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password") or ""
+
+        # -----------------------------
+        # Basic validation
+        # -----------------------------
+        if not full_name:
+            return jsonify({"success": False, "error": "Full name is required"}), 400
+        if not phone:
+            return jsonify({"success": False, "error": "Phone number is required"}), 400
+        if not email:
+            return jsonify({"success": False, "error": "Email is required"}), 400
+        if not password:
+            return jsonify({"success": False, "error": "Password is required"}), 400
+
+        # -----------------------------
+        # Hash password
+        # -----------------------------
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        # -----------------------------
+        # Insert into owner table
+        # -----------------------------
+        response = supabase.table("owner").insert({
+            "full_name": full_name,
+            "phone_number": phone,
+            "email": email,
+            "password_hash": password_hash
+        }).execute()
+
+        if getattr(response, "error", None):
+            return jsonify({
+                "success": False,
+                "error": "Database insert failed"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Owner registered successfully"
+        }), 200
+
+    except Exception as e:
+        logger.exception("Owner basic registration error: %s", e)
+        return jsonify({
+            "success": False,
+            "error": "Server error"
+        }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
