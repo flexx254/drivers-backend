@@ -950,6 +950,9 @@ def update_sacco():
 
 
 
+ 
+        
+
 @app.route("/register-owner", methods=["POST"])
 def register_owner():
     try:
@@ -959,15 +962,9 @@ def register_owner():
         form = request.form
         files = request.files
 
-        full_name = (form.get("full_name") or "").strip()
-        phone = (form.get("phone_number") or "").strip()
         plate = (form.get("number_plate") or "").strip()
         car_make = (form.get("car_make") or "").strip()
         car_model = (form.get("car_model") or "").strip()
-
-        # 🔐 PASSWORD — SAME BEHAVIOR AS /register
-        password = (form.get("password") or "").strip()
-        confirm = (form.get("confirm_password") or "").strip()
 
         car_image = files.get("car_image")
         logbook = files.get("logbook")
@@ -977,60 +974,24 @@ def register_owner():
         # -----------------------------
         # 2. Required field validation
         # -----------------------------
-        if not full_name:
-            return jsonify({"success": False, "error": "Full name is required"}), 400
-
-        if not phone or not PHONE_REGEX.match(phone):
-            return jsonify({"success": False, "error": "Invalid phone number format"}), 400
-
         if not plate:
             return jsonify({"success": False, "error": "Number plate is required"}), 400
 
         if not car_make or not car_model:
             return jsonify({"success": False, "error": "Car make and model are required"}), 400
 
-        # -----------------------------
-        # 3. PASSWORD VALIDATION (IDENTICAL TO /register)
-        # -----------------------------
-        if not password:
-            return jsonify({"success": False, "error": "Password is required"}), 400
-
-        if not confirm:
-            return jsonify({"success": False, "error": "Confirm password is required"}), 400
-
-        if password != confirm:
-            return jsonify({"success": False, "error": "Passwords do not match"}), 400
-
-        ok, msg = check_password_strength(password)
-        if not ok:
-            return jsonify({"success": False, "error": msg}), 400
-
-        try:
-            password_hash = bcrypt.hashpw(
-                password.encode("utf-8"),
-                bcrypt.gensalt()
-            ).decode("utf-8")
-        except Exception as e:
-            logger.exception("Password hashing failed: %s", e)
-            return jsonify({"success": False, "error": "Server error hashing password"}), 500
-
-        # 🔒 Freeze guarantee (defensive, optional but recommended)
-        if not isinstance(password_hash, str) or len(password_hash) < 20:
-            logger.error("Invalid password hash generated")
-            return jsonify({"success": False, "error": "Invalid password hash"}), 500
+        if not car_image or not logbook or not inspection:
+            return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 4. Plate validation
+        # 3. Plate validation
         # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
             return jsonify({"success": False, "error": "Invalid number plate"}), 400
 
-        if not car_image or not logbook or not inspection:
-            return jsonify({"success": False, "error": "Missing required documents"}), 400
-
         # -----------------------------
-        # 5. Upload helper
+        # 4. Upload helper
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1058,15 +1019,12 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 6. Build INSERT payload
+        # 5. Build INSERT payload
         # -----------------------------
         payload = {
-            "full_name": full_name,
-            "phone_number": phone,
             "number_plate": normalized_plate,
             "car_make": car_make,
             "car_model": car_model,
-            "password_hash": password_hash,
             "car_image_url": car_image_url,
             "logbook_url": logbook_url,
             "inspection_report_url": inspection_url,
@@ -1074,10 +1032,9 @@ def register_owner():
         }
 
         logger.info("INSERT PAYLOAD KEYS: %s", list(payload.keys()))
-        logger.info("PASSWORD HASH LENGTH: %s", len(password_hash))
 
         # -----------------------------
-        # 7. Insert into Supabase
+        # 6. Insert into Supabase
         # -----------------------------
         response = supabase.table("owner").insert(payload).execute()
 
