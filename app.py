@@ -962,6 +962,8 @@ def register_owner():
         form = request.form
         files = request.files
 
+        continue_token = (form.get("continue_token") or "").strip()
+
         plate = (form.get("number_plate") or "").strip()
         car_make = (form.get("car_make") or "").strip()
         car_model = (form.get("car_model") or "").strip()
@@ -972,7 +974,16 @@ def register_owner():
         uber_report = files.get("uber_report")
 
         # -----------------------------
-        # 2. Required field validation
+        # 2. continue_token validation
+        # -----------------------------
+        if not continue_token:
+            return jsonify({
+                "success": False,
+                "error": "Session expired. Please log in again."
+            }), 401
+
+        # -----------------------------
+        # 3. Required field validation
         # -----------------------------
         if not plate:
             return jsonify({"success": False, "error": "Number plate is required"}), 400
@@ -984,14 +995,32 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 3. Plate validation
+        # 4. Plate validation
         # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
             return jsonify({"success": False, "error": "Invalid number plate"}), 400
 
         # -----------------------------
-        # 4. Upload helper
+        # 5. Confirm owner row exists
+        # -----------------------------
+        owner_check = (
+            supabase
+            .table("owner")
+            .select("id")
+            .eq("continue_token", continue_token)
+            .limit(1)
+            .execute()
+        )
+
+        if not owner_check.data:
+            return jsonify({
+                "success": False,
+                "error": "Owner record not found or session invalid"
+            }), 403
+
+        # -----------------------------
+        # 6. Upload helper
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1019,7 +1048,7 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 5. Build INSERT payload
+        # 7. Build UPDATE payload
         # -----------------------------
         payload = {
             "number_plate": normalized_plate,
@@ -1031,23 +1060,29 @@ def register_owner():
             "uber_report_url": uber_url
         }
 
-        logger.info("INSERT PAYLOAD KEYS: %s", list(payload.keys()))
+        logger.info("UPDATE PAYLOAD KEYS: %s", list(payload.keys()))
 
         # -----------------------------
-        # 6. Insert into Supabase
+        # 8. Update existing owner row
         # -----------------------------
-        response = supabase.table("owner").insert(payload).execute()
+        update_response = (
+            supabase
+            .table("owner")
+            .update(payload)
+            .eq("continue_token", continue_token)
+            .execute()
+        )
 
-        if getattr(response, "error", None):
-            logger.error("Supabase insert error: %s", response.error)
-            return jsonify({"success": False, "error": "Database insert failed"}), 500
+        if getattr(update_response, "error", None):
+            logger.error("Supabase update error: %s", update_response.error)
+            return jsonify({"success": False, "error": "Database update failed"}), 500
 
-        if not response.data:
-            return jsonify({"success": False, "error": "Insert returned no data"}), 500
-
+        # -----------------------------
+        # 9. Success
+        # -----------------------------
         return jsonify({
             "success": True,
-            "message": "Car owner registered successfully"
+            "message": "Car owner details updated successfully"
         }), 200
 
     except ValueError as ve:
@@ -1056,6 +1091,8 @@ def register_owner():
     except Exception as e:
         logger.exception("Owner registration error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
 
 @app.route("/partner-reg", methods=["POST"])
 def partner_reg():
