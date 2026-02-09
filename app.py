@@ -1773,39 +1773,6 @@ def test_password():
         return jsonify({"error": "Server error"}), 500
         
 @app.route("/get-continue-token", methods=["POST"])
-def get_continue_token():
-    if supabase is None:
-        return jsonify({"success": False, "error": "Database unavailable"}), 500
-
-    try:
-        data = request.get_json(force=True) or {}
-        email = (data.get("email") or "").strip().lower()
-
-        if not email:
-            return jsonify({"success": False, "error": "Email is required"}), 400
-
-        # Fetch continue_token from dere table
-        res = (
-            supabase
-            .table("dere")
-            .select("continue_token")
-            .eq("email", email)
-            .single()
-            .execute()
-        )
-
-        if not res.data:
-            return jsonify({"success": False, "error": "User not found"}), 404
-
-        return jsonify({
-            "success": True,
-            "continue_token": res.data.get("continue_token")
-        }), 200
-
-    except Exception as e:
-        logger.exception("Get continue_token error: %s", str(e))
-        return jsonify({"success": False, "error": "Server error"}), 500
-
 
 @app.route("/register-owner-basic", methods=["POST"])
 def register_owner_basic():
