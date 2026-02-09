@@ -1772,7 +1772,6 @@ def test_password():
         logger.exception("Test password insert failed")
         return jsonify({"error": "Server error"}), 500
         
-@app.route("/get-continue-token", methods=["POST"])
 
 @app.route("/register-owner-basic", methods=["POST"])
 def register_owner_basic():
