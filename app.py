@@ -953,6 +953,8 @@ def update_sacco():
  
         
 
+
+
 @app.route("/register-owner", methods=["POST"])
 def register_owner():
     try:
@@ -961,8 +963,6 @@ def register_owner():
         # -----------------------------
         form = request.form
         files = request.files
-
-        continue_token = (form.get("continue_token") or "").strip()
 
         plate = (form.get("number_plate") or "").strip()
         car_make = (form.get("car_make") or "").strip()
@@ -974,16 +974,7 @@ def register_owner():
         uber_report = files.get("uber_report")
 
         # -----------------------------
-        # 2. continue_token validation
-        # -----------------------------
-        if not continue_token:
-            return jsonify({
-                "success": False,
-                "error": "Session expired. Please log in again."
-            }), 401
-
-        # -----------------------------
-        # 3. Required field validation
+        # 2. Required field validation
         # -----------------------------
         if not plate:
             return jsonify({"success": False, "error": "Number plate is required"}), 400
@@ -995,32 +986,14 @@ def register_owner():
             return jsonify({"success": False, "error": "Missing required documents"}), 400
 
         # -----------------------------
-        # 4. Plate validation
+        # 3. Plate validation
         # -----------------------------
         normalized_plate = normalize_plate(plate)
         if not valid_plate(normalized_plate):
             return jsonify({"success": False, "error": "Invalid number plate"}), 400
 
         # -----------------------------
-        # 5. Confirm owner row exists
-        # -----------------------------
-        owner_check = (
-            supabase
-            .table("owner")
-            .select("id")
-            .eq("continue_token", continue_token)
-            .limit(1)
-            .execute()
-        )
-
-        if not owner_check.data:
-            return jsonify({
-                "success": False,
-                "error": "Owner record not found or session invalid"
-            }), 403
-
-        # -----------------------------
-        # 6. Upload helper
+        # 4. Upload helper
         # -----------------------------
         def upload_doc(file, folder):
             if not allowed_file(file):
@@ -1048,7 +1021,7 @@ def register_owner():
         uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
 
         # -----------------------------
-        # 7. Build UPDATE payload
+        # 5. Build INSERT payload
         # -----------------------------
         payload = {
             "number_plate": normalized_plate,
@@ -1060,29 +1033,23 @@ def register_owner():
             "uber_report_url": uber_url
         }
 
-        logger.info("UPDATE PAYLOAD KEYS: %s", list(payload.keys()))
+        logger.info("INSERT PAYLOAD KEYS: %s", list(payload.keys()))
 
         # -----------------------------
-        # 8. Update existing owner row
+        # 6. Insert into Supabase
         # -----------------------------
-        update_response = (
-            supabase
-            .table("owner")
-            .update(payload)
-            .eq("continue_token", continue_token)
-            .execute()
-        )
+        response = supabase.table("owner").insert(payload).execute()
 
-        if getattr(update_response, "error", None):
-            logger.error("Supabase update error: %s", update_response.error)
-            return jsonify({"success": False, "error": "Database update failed"}), 500
+        if getattr(response, "error", None):
+            logger.error("Supabase insert error: %s", response.error)
+            return jsonify({"success": False, "error": "Database insert failed"}), 500
 
-        # -----------------------------
-        # 9. Success
-        # -----------------------------
+        if not response.data:
+            return jsonify({"success": False, "error": "Insert returned no data"}), 500
+
         return jsonify({
             "success": True,
-            "message": "Car owner details updated successfully"
+            "message": "Car owner registered successfully"
         }), 200
 
     except ValueError as ve:
