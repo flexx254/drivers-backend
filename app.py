@@ -223,9 +223,7 @@ def parse_date(date_str: str):
     except:
         return None
 
-def hash_password(password: str) -> str:
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-    return hashed.decode()
+
 
 def generate_driver_id():
     return f"{random.randint(100000, 999999)}"
