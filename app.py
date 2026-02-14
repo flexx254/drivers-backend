@@ -115,6 +115,16 @@ def hash_password(password: str) -> str:
     return hashed.decode("utf-8")
 
 app = Flask(__name__)
+# -----------------------------
+# JWT CONFIGURATION
+# -----------------------------
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
+
+if not app.config["JWT_SECRET_KEY"]:
+    raise RuntimeError("JWT_SECRET_KEY missing from environment variables")
+
+jwt = JWTManager(app)
 
 # -----------------------------
 # APP CONFIG
