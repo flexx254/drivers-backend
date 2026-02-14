@@ -425,81 +425,89 @@ def continue_reg():
 
 
 
+
+
 @app.route("/upload-documents", methods=["POST"])
+@jwt_required()  # require JWT authentication
 def upload_documents():
     try:
         # -----------------------------
-        # 1. Read form fields
+        # 1. Get current user from JWT
         # -----------------------------
-        token = request.form.get("token")
-        id_number = request.form.get("id_number")
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
 
+        # -----------------------------
+        # 2. Get form fields
+        # -----------------------------
+        id_number = request.form.get("id_number")
         license_exp = request.form.get("license_expiry")
         psv_exp = request.form.get("psv_badge_expiry")
         gc_exp = request.form.get("good_conduct_expiry")
 
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
-
         # -----------------------------
-        # 2. Find user by token
+        # 3. Get uploaded files
         # -----------------------------
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-
-        email = lookup.data["email"]
-
-        # -----------------------------
-        # 3. Upload files to Cloudinary
-        # -----------------------------
-        def upload_file(file):
-            if not file:
-                return None
-            upload = cloudinary.uploader.upload(file, folder="driver_docs")
-            return upload.get("secure_url")
-
         profile_file = request.files.get("profile_pic")
         license_file = request.files.get("license")
         psv_file = request.files.get("psv_badge")
         good_conduct_file = request.files.get("good_conduct")
 
-        profile_url = upload_file(profile_file)
-        license_url = upload_file(license_file)
-        psv_url = upload_file(psv_file)
-        gc_url = upload_file(good_conduct_file)
+        # -----------------------------
+        # 4. Helper: upload & resize
+        # -----------------------------
+        def process_file(file, folder):
+            if not file:
+                return None
+            if not allowed_file(file):
+                raise ValueError(f"Invalid file format for {file.filename}. Allowed: JPG/PNG")
+            resized = resize_image(file)
+            uploaded = cloudinary.uploader.upload(resized, folder=folder)
+            return uploaded.get("secure_url")
 
         # -----------------------------
-        # 4. Build update fields
+        # 5. Upload files
         # -----------------------------
-        update_data = {
-            "id_number": id_number,
-            "license_expiry": license_exp,
-            "psv_badge_expiry": psv_exp,
-            "good_conduct_expiry": gc_exp,
-        }
+        profile_url = process_file(profile_file, "driver_profile") if profile_file else None
+        license_url = process_file(license_file, "driver_docs") if license_file else None
+        psv_url = process_file(psv_file, "driver_docs") if psv_file else None
+        gc_url = process_file(good_conduct_file, "driver_docs") if good_conduct_file else None
 
+        # -----------------------------
+        # 6. Build update data
+        # -----------------------------
+        update_data = {}
+        if id_number: update_data["id_number"] = id_number
+        if license_exp: update_data["license_expiry"] = license_exp
+        if psv_exp: update_data["psv_badge_expiry"] = psv_exp
+        if gc_exp: update_data["good_conduct_expiry"] = gc_exp
         if profile_url: update_data["profile_pic_url"] = profile_url
         if license_url: update_data["license_url"] = license_url
         if psv_url: update_data["psv_badge_url"] = psv_url
         if gc_url: update_data["good_conduct_url"] = gc_url
 
+        if not update_data:
+            return jsonify({"success": False, "error": "No data or files to update"}), 400
+
         # -----------------------------
-        # 5. Save to database
+        # 7. Save to database
         # -----------------------------
-        supabase.table("dere").update(update_data).eq("email", email).execute()
+        response = supabase.table("dere").update(update_data).eq("email", email).execute()
+        if getattr(response, "error", None):
+            return jsonify({"success": False, "error": str(response.error)}), 500
 
         return jsonify({
             "success": True,
-            "message": "Documents uploaded successfully."
-        })
+            "message": "Documents uploaded successfully.",
+            "updated_fields": list(update_data.keys())
+        }), 200
 
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
     except Exception as e:
         logger.exception("Document upload error: %s", str(e))
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
 
