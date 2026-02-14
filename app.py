@@ -26,6 +26,12 @@ from supabase import create_client, Client
 
 # pillow
 from PIL import Image
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity
+)
 
 # -----------------------------
 # LOAD ENV
