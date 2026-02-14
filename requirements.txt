@@ -10,3 +10,4 @@ Pillow
 Werkzeug
 gunicorn
 mailjet-rest
+pip install flask-jwt-extended
