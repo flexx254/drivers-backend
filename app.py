@@ -510,36 +510,34 @@ def upload_documents():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+# ============================================================
+# ROUTE: UPDATE ID NUMBER ONLY (JWT SECURE)
+# ============================================================
 
-# ============================================================
-# ROUTE: UPDATE ID NUMBER ONLY
-# ============================================================
+
 @app.route("/update-id", methods=["POST"])
+@jwt_required()
 def update_id():
     try:
-        token = request.form.get("token", "").strip()
+        # -----------------------------
+        # 1. Get email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+        # -----------------------------
+        # 2. Get ID number from request
+        # -----------------------------
         id_number = request.form.get("id_number", "").strip()
-
-        print("Received token:", token)
-        print("Received ID:", id_number)
-
-        if not token:
-            return jsonify({"success": False, "error": "Token is required"}), 400
         if not id_number:
             return jsonify({"success": False, "error": "ID number is required"}), 400
 
-        # Find user by token
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-        print("Token lookup:", lookup.data)
+        print("Updating ID for:", email, "New ID:", id_number)
 
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-
-        email = lookup.data.get("email")
-        if not email:
-            return jsonify({"success": False, "error": "No email found for token"}), 400
-
-        # Update ID number
+        # -----------------------------
+        # 3. Update Supabase
+        # -----------------------------
         update_resp = supabase.table("dere").update({
             "id_number": id_number
         }).eq("email", email).execute()
@@ -549,6 +547,9 @@ def update_id():
         if getattr(update_resp, "error", None):
             return jsonify({"success": False, "error": str(update_resp.error)}), 500
 
+        # -----------------------------
+        # 4. Success response
+        # -----------------------------
         return jsonify({
             "success": True,
             "message": "ID number saved successfully."
@@ -558,17 +559,28 @@ def update_id():
         logger.exception("ID update error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
+    
 
 
+
+# ============================================================
+# ROUTE: UPDATE NUMBER PLATE (JWT SECURE)
+# ============================================================
 @app.route("/update-number-plate", methods=["POST"])
+@jwt_required()
 def update_number_plate():
     try:
-        token = request.form.get("token", "").strip()
+        # -----------------------------
+        # 1. Get email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+        # -----------------------------
+        # 2. Get number plate from request
+        # -----------------------------
         plate = request.form.get("number_plate", "").strip()
-
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
-
         if not plate:
             return jsonify({"success": False, "error": "Number plate is required"}), 400
 
@@ -577,23 +589,9 @@ def update_number_plate():
         if not valid_plate(normalized):
             return jsonify({"success": False, "error": "Invalid number plate format"}), 400
 
-        # ------------------------------------------------------------------
-        # 1. Look up user by continue_token
-        # ------------------------------------------------------------------
-        lookup = supabase.table("dere")\
-            .select("*")\
-            .eq("continue_token", token)\
-            .single()\
-            .execute()
-
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-
-        email = lookup.data.get("email")
-
-        # ------------------------------------------------------------------
-        # 2. Check for duplicate number plate (exclude this user)
-        # ------------------------------------------------------------------
+        # -----------------------------
+        # 3. Check for duplicate number plate (exclude this user)
+        # -----------------------------
         duplicate = supabase.table("dere")\
             .select("*")\
             .eq("number_plate", normalized)\
@@ -603,12 +601,12 @@ def update_number_plate():
         if duplicate.data:
             return jsonify({"success": False, "error": "Number plate already exists"}), 400
 
-        # ------------------------------------------------------------------
-        # 3. Update number plate
-        # ------------------------------------------------------------------
+        # -----------------------------
+        # 4. Update number plate
+        # -----------------------------
         update_resp = supabase.table("dere")\
             .update({"number_plate": normalized})\
-            .eq("continue_token", token)\
+            .eq("email", email)\
             .execute()
 
         if getattr(update_resp, "error", None):
@@ -623,18 +621,27 @@ def update_number_plate():
         logger.exception("Number plate update error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
 
+
+
+
 # ============================================================
-# ROUTE: UPDATE PROFILE PICTURE ONLY
+# ROUTE: UPDATE PROFILE PICTURE (JWT SECURE)
 # ============================================================
 @app.route("/update-profile-picture", methods=["POST"])
+@jwt_required()
 def update_profile_picture():
     try:
-        token = request.form.get("token", "").strip()
+        # -----------------------------
+        # 1. Get email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+        # -----------------------------
+        # 2. Get uploaded file
+        # -----------------------------
         file = request.files.get("profile_picture")
-
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
-
         if not file:
             return jsonify({"success": False, "error": "No image uploaded"}), 400
 
@@ -642,31 +649,17 @@ def update_profile_picture():
         if not allowed_file(file):
             return jsonify({"success": False, "error": "Invalid image format. Use JPG or PNG."}), 400
 
-        # ----------------------------------------------------------
-        # 1. Find user by token
-        # ----------------------------------------------------------
-        lookup = supabase.table("dere")\
-            .select("*")\
-            .eq("continue_token", token)\
-            .single()\
-            .execute()
-
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-
-        email = lookup.data.get("email")
-
-        # ----------------------------------------------------------
-        # 2. Resize image using Pillow before upload
-        # ----------------------------------------------------------
+        # -----------------------------
+        # 3. Resize image using Pillow
+        # -----------------------------
         try:
             resized_buffer = resize_image(file)
         except Exception as e:
             return jsonify({"success": False, "error": f"Image processing failed: {str(e)}"}), 500
 
-        # ----------------------------------------------------------
-        # 3. Upload to Cloudinary
-        # ----------------------------------------------------------
+        # -----------------------------
+        # 4. Upload to Cloudinary
+        # -----------------------------
         try:
             upload_resp = cloudinary.uploader.upload(
                 resized_buffer,
@@ -680,9 +673,9 @@ def update_profile_picture():
         if not image_url:
             return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
 
-        # ----------------------------------------------------------
-        # 4. Save URL to Supabase
-        # ----------------------------------------------------------
+        # -----------------------------
+        # 5. Save URL to Supabase
+        # -----------------------------
         update_resp = supabase.table("dere")\
             .update({"profile_pic_url": image_url})\
             .eq("email", email)\
@@ -691,9 +684,9 @@ def update_profile_picture():
         if getattr(update_resp, "error", None):
             return jsonify({"success": False, "error": "Database update failed"}), 500
 
-        # ----------------------------------------------------------
-        # 5. SUCCESS
-        # ----------------------------------------------------------
+        # -----------------------------
+        # 6. SUCCESS
+        # -----------------------------
         return jsonify({
             "success": True,
             "profile_pic_url": image_url,
@@ -705,136 +698,139 @@ def update_profile_picture():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
-@app.route("/update-driving-license", methods=["POST"])
-def update_driving_license():
-    try:
-        token = request.form.get("token", "").strip()
-        license_expiry = request.form.get("license_expiry")
-        file = request.files.get("driving_license")
-
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
-
-        if not file:
-            return jsonify({"success": False, "error": "No file uploaded"}), 400
-
-        # Validate image
-        if not allowed_file(file):
-            return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
-
-        # Find user
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-        email = lookup.data.get("email")
-
-        # Resize image
-        resized_buffer = resize_image(file)
-
-        # Upload to Cloudinary
-        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
-        license_url = upload_resp.get("secure_url")
-
-        # Update Supabase
-        supabase.table("dere").update({
-            "license_url": license_url,
-            "license_expiry": license_expiry
-        }).eq("email", email).execute()
-
-        return jsonify({
-            "success": True,
-            "license_url": license_url,
-            "message": "Driving license uploaded successfully."
-        })
-
-    except Exception as e:
-        logger.exception("Driving license upload error: %s", e)
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
-
+# ============================================================
+# ROUTE: UPDATE PSV BADGE (JWT SECURE)
+# ============================================================
 @app.route("/update-psv-badge", methods=["POST"])
+@jwt_required()
 def update_psv_badge():
     try:
-        token = request.form.get("token", "").strip()
-        psv_expiry = request.form.get("psv_badge_expiry")
-        file = request.files.get("psv_badge")
+        # -----------------------------
+        # 1. Get user email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
 
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
+        # -----------------------------
+        # 2. Get file and expiry date
+        # -----------------------------
+        file = request.files.get("psv_badge")
+        psv_expiry = request.form.get("psv_badge_expiry", "").strip()
+
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
+
         if not allowed_file(file):
             return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
 
-        # Find user
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-        email = lookup.data.get("email")
+        # -----------------------------
+        # 3. Resize & upload
+        # -----------------------------
+        try:
+            resized_buffer = resize_image(file)
+            upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+            psv_url = upload_resp.get("secure_url")
+        except Exception as e:
+            logger.exception("PSV badge processing/upload error: %s", e)
+            return jsonify({"success": False, "error": "File upload failed"}), 500
 
-        # Resize & upload
-        resized_buffer = resize_image(file)
-        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
-        psv_url = upload_resp.get("secure_url")
+        if not psv_url:
+            return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
 
-        # Save to DB
-        supabase.table("dere").update({
+        # -----------------------------
+        # 4. Save to Supabase
+        # -----------------------------
+        update_resp = supabase.table("dere").update({
             "psv_badge_url": psv_url,
             "psv_badge_expiry": psv_expiry
         }).eq("email", email).execute()
 
+        if getattr(update_resp, "error", None):
+            return jsonify({"success": False, "error": "Database update failed"}), 500
+
+        # -----------------------------
+        # 5. SUCCESS
+        # -----------------------------
         return jsonify({
             "success": True,
             "psv_badge_url": psv_url,
             "message": "PSV badge uploaded successfully."
-        })
+        }), 200
 
     except Exception as e:
         logger.exception("PSV badge upload error: %s", e)
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
+
+
+# ============================================================
+# ROUTE: UPDATE GOOD CONDUCT CERTIFICATE (JWT SECURE)
+# ============================================================
 @app.route("/update-good-conduct", methods=["POST"])
+@jwt_required()
 def update_good_conduct():
     try:
-        token = request.form.get("token", "").strip()
-        gc_expiry = request.form.get("good_conduct_expiry")
-        file = request.files.get("good_conduct")
+        # -----------------------------
+        # 1. Get user email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
 
-        if not token:
-            return jsonify({"success": False, "error": "Missing token"}), 400
+        # -----------------------------
+        # 2. Get file and expiry date
+        # -----------------------------
+        file = request.files.get("good_conduct")
+        gc_expiry = request.form.get("good_conduct_expiry", "").strip()
+
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
+
         if not allowed_file(file):
             return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
 
-        # Find user
-        lookup = supabase.table("dere").select("*").eq("continue_token", token).single().execute()
-        if not lookup.data:
-            return jsonify({"success": False, "error": "Invalid token"}), 400
-        email = lookup.data.get("email")
+        # -----------------------------
+        # 3. Resize & upload
+        # -----------------------------
+        try:
+            resized_buffer = resize_image(file)
+            upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+            gc_url = upload_resp.get("secure_url")
+        except Exception as e:
+            logger.exception("Good conduct processing/upload error: %s", e)
+            return jsonify({"success": False, "error": "File upload failed"}), 500
 
-        # Resize & upload
-        resized_buffer = resize_image(file)
-        upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
-        gc_url = upload_resp.get("secure_url")
+        if not gc_url:
+            return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
 
-        # Save to DB
-        supabase.table("dere").update({
+        # -----------------------------
+        # 4. Save to Supabase
+        # -----------------------------
+        update_resp = supabase.table("dere").update({
             "good_conduct_url": gc_url,
             "good_conduct_expiry": gc_expiry
         }).eq("email", email).execute()
 
+        if getattr(update_resp, "error", None):
+            return jsonify({"success": False, "error": "Database update failed"}), 500
+
+        # -----------------------------
+        # 5. SUCCESS
+        # -----------------------------
         return jsonify({
             "success": True,
             "good_conduct_url": gc_url,
             "message": "Good conduct certificate uploaded successfully."
-        })
+        }), 200
 
     except Exception as e:
         logger.exception("Good conduct upload error: %s", e)
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Server error"}), 500
+
 
 # ============================================================
 # ROUTE: LOGIN
