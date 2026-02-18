@@ -832,9 +832,6 @@ def update_good_conduct():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
-# ============================================================
-# ROUTE: LOGIN
-# ============================================================
 @app.route("/login", methods=["POST"])
 def login():
     try:
@@ -854,9 +851,16 @@ def login():
     if supabase is None:
         return jsonify({"success": False, "error": "Database client missing"}), 500
 
-    # Fetch user from Supabase
+    # Fetch user
     try:
-        response = supabase.table("dere").select("*").eq("email", email).single().execute()
+        response = (
+            supabase
+            .table("dere")
+            .select("*")
+            .eq("email", email)
+            .single()
+            .execute()
+        )
         user = response.data
     except Exception as e:
         logger.exception("Supabase lookup error: %s", str(e))
@@ -877,11 +881,12 @@ def login():
         logger.exception("Password check error: %s", str(e))
         return jsonify({"success": False, "error": "Password verification failed"}), 500
 
-    # Return continue token for authenticated requests
-    token = user.get("continue_token") or ""
+    # 🔥 CREATE REAL JWT TOKEN
+    access_token = create_access_token(identity=email)
+
     return jsonify({
         "success": True,
-        "token": token,
+        "access_token": access_token,
         "message": "Login successful"
     }), 200
 
