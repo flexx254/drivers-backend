@@ -561,7 +561,79 @@ def update_id():
 
     
 
+# ============================================================
+# ROUTE: UPDATE DRIVING LICENSE (JWT SECURE)
+# ============================================================
+@app.route("/update-driving-license", methods=["POST"])
+@jwt_required()
+def update_driving_license():
+    try:
+        # -----------------------------
+        # 1. Get email from JWT
+        # -----------------------------
+        email = get_jwt_identity()
+        if not email:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
 
+        # -----------------------------
+        # 2. Get form data
+        # -----------------------------
+        license_expiry = request.form.get("license_expiry", "").strip()
+        file = request.files.get("license")
+
+        if not file:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+        if not allowed_file(file):
+            return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
+
+        # -----------------------------
+        # 3. Resize & upload
+        # -----------------------------
+        try:
+            resized_buffer = resize_image(file)
+            upload_resp = cloudinary.uploader.upload(
+                resized_buffer,
+                folder="driver_docs"
+            )
+            license_url = upload_resp.get("secure_url")
+        except Exception as e:
+            logger.exception("Driving license upload error: %s", e)
+            return jsonify({"success": False, "error": "File upload failed"}), 500
+
+        if not license_url:
+            return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
+
+        # -----------------------------
+        # 4. Save to Supabase
+        # -----------------------------
+        update_data = {
+            "license_url": license_url
+        }
+
+        if license_expiry:
+            update_data["license_expiry"] = license_expiry
+
+        update_resp = supabase.table("dere")\
+            .update(update_data)\
+            .eq("email", email)\
+            .execute()
+
+        if getattr(update_resp, "error", None):
+            return jsonify({"success": False, "error": "Database update failed"}), 500
+
+        # -----------------------------
+        # 5. SUCCESS
+        # -----------------------------
+        return jsonify({
+            "success": True,
+            "license_url": license_url,
+            "message": "Driving license uploaded successfully."
+        }), 200
+
+    except Exception as e:
+        logger.exception("Driving license update error: %s", str(e))
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 # ============================================================
 # ROUTE: UPDATE NUMBER PLATE (JWT SECURE)
