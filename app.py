@@ -1873,6 +1873,40 @@ def register_owner_basic():
             "error": "Server error"
         }), 500
 
+@app.route("/check-partner-status", methods=["GET"])
+@jwt_required()
+def check_partner_status():
+    try:
+        email = get_jwt_identity()
+
+        if not email:
+            return jsonify({"fully_registered": False}), 401
+
+        response = supabase.table("owner") \
+            .select("*") \
+            .eq("email", email) \
+            .single() \
+            .execute()
+
+        if not response.data:
+            return jsonify({"fully_registered": False})
+
+        owner = response.data
+
+        # Columns to ignore (system columns)
+        ignore_columns = ["id", "created_at"]
+
+        # Check if any important column is NULL
+        for key, value in owner.items():
+            if key not in ignore_columns and value is None:
+                return jsonify({"fully_registered": False})
+
+        return jsonify({"fully_registered": True})
+
+    except Exception as e:
+        print("Status check error:", e)
+        return jsonify({"fully_registered": False}), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
