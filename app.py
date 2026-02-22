@@ -1903,6 +1903,106 @@ def check_partner_status():
         print("Status check error:", e)
         return jsonify({"fully_registered": False}), 500
 
+
+
+
+
+@app.route("/continue-partner-reg", methods=["POST"])
+@jwt_required()
+def continue_partner_reg():
+    try:
+        email = get_jwt_identity()
+
+        if not email:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        form = request.form
+        files = request.files
+
+        plate = (form.get("number_plate") or "").strip()
+        car_make = (form.get("car_make") or "").strip()
+        car_model = (form.get("car_model") or "").strip()
+
+        car_image = files.get("car_image")
+        logbook = files.get("logbook")
+        inspection = files.get("inspection_report")
+        uber_report = files.get("uber_report")
+
+        # Validation
+        if not plate:
+            return jsonify({"error": "Number plate is required"}), 400
+
+        if not car_make or not car_model:
+            return jsonify({"error": "Car make and model are required"}), 400
+
+        if not car_image or not logbook or not inspection:
+            return jsonify({"error": "Missing required documents"}), 400
+
+        normalized_plate = normalize_plate(plate)
+
+        if not valid_plate(normalized_plate):
+            return jsonify({"error": "Invalid number plate"}), 400
+
+        def upload_doc(file, folder):
+            if not allowed_file(file):
+                raise ValueError("Invalid file format")
+
+            image = Image.open(file)
+
+            if image.mode in ("RGBA", "P"):
+                image = image.convert("RGB")
+
+            image.thumbnail((1200, 1200))
+
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG", quality=85)
+            buffer.seek(0)
+
+            result = cloudinary.uploader.upload(
+                buffer,
+                folder=folder,
+                resource_type="image"
+            )
+
+            return result.get("secure_url")
+
+        # Upload documents
+        car_image_url = upload_doc(car_image, "owner/car")
+        logbook_url = upload_doc(logbook, "owner/logbook")
+        inspection_url = upload_doc(inspection, "owner/inspection")
+        uber_url = upload_doc(uber_report, "owner/uber") if uber_report else None
+
+        payload = {
+            "number_plate": normalized_plate,
+            "car_make": car_make,
+            "car_model": car_model,
+            "car_image_url": car_image_url,
+            "logbook_url": logbook_url,
+            "inspection_report_url": inspection_url,
+            "uber_report_url": uber_url
+        }
+
+        # ✅ UPDATE existing owner row using email
+        response = supabase.table("owner") \
+            .update(payload) \
+            .eq("email", email) \
+            .execute()
+
+        if not response.data:
+            return jsonify({"error": "Update failed"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Registration completed successfully"
+        })
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+
+    except Exception as e:
+        logger.exception("Continue partner registration error: %s", e)
+        return jsonify({"error": "Server error"}), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
