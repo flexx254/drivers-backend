@@ -2003,6 +2003,49 @@ def continue_partner_reg():
         logger.exception("Continue partner registration error: %s", e)
         return jsonify({"error": "Server error"}), 500
 
+
+
+@app.route("/check-driver-status", methods=["GET"])
+@jwt_required()
+def check_driver_status():
+    try:
+        email = get_jwt_identity()
+
+        # Get driver record
+        response = supabase.table("dere") \
+            .select("*") \
+            .eq("email", email) \
+            .single() \
+            .execute()
+
+        # If no driver record exists
+        if not response.data:
+            return jsonify({"fully_registered": False})
+
+        driver = response.data
+
+        # ✅ Only check REQUIRED columns
+        required_fields = [
+            "full_name",
+            "number_plate",
+            "driving_license_url",
+            "psv_badge_url",
+            "good_conduct_url",
+            "profile_pic_url"
+        ]
+
+        for field in required_fields:
+            value = driver.get(field)
+
+            # Check empty string, None, or whitespace
+            if not value or str(value).strip() == "":
+                return jsonify({"fully_registered": False})
+
+        return jsonify({"fully_registered": True})
+
+    except Exception as e:
+        print("Driver status check error:", e)
+        return jsonify({"fully_registered": False}), 500
 # ============================================================
 # RUN APP
 # ============================================================
