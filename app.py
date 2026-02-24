@@ -2028,7 +2028,7 @@ def check_driver_status():
         required_fields = [
             "full_name",
             "number_plate",
-            "driving_license_url",
+            "license_url",
             "psv_badge_url",
             "good_conduct_url",
             "profile_pic_url"
