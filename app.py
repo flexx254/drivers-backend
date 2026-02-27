@@ -1310,8 +1310,6 @@ def connect_owner():
         }), 500
 
 
-
-
 @app.route("/update-location", methods=["POST"])
 @jwt_required()
 def update_location():
@@ -1323,7 +1321,7 @@ def update_location():
         }), 500
 
     try:
-        user_id = get_jwt_identity()
+        user_email = get_jwt_identity()   # now this is email
         data = request.get_json() or {}
 
         location = (data.get("location") or "").strip()
@@ -1338,9 +1336,15 @@ def update_location():
             supabase
             .table("dere")
             .update({"location": location})
-            .eq("id", user_id)
+            .eq("email", user_email)   # match by email
             .execute()
         )
+
+        if not update_resp.data:
+            return jsonify({
+                "success": False,
+                "error": "User not found"
+            }), 404
 
         return jsonify({
             "success": True,
