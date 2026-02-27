@@ -1310,12 +1310,11 @@ def connect_owner():
         }), 500
 
 
-@app.route("/update-location", methods=["POST", "OPTIONS"])
-def update_location():
 
-    # --- CORS preflight ---
-    if request.method == "OPTIONS":
-        return jsonify(success=True), 200
+
+@app.route("/update-location", methods=["POST"])
+@jwt_required()
+def update_location():
 
     if supabase is None:
         return jsonify({
@@ -1324,16 +1323,8 @@ def update_location():
         }), 500
 
     try:
-        data = request.get_json(force=True) or {}
-
-        # Validate ID
-        try:
-            record_id = int(data.get("id"))
-        except (TypeError, ValueError):
-            return jsonify({
-                "success": False,
-                "error": "ID must be a number"
-            }), 400
+        user_id = get_jwt_identity()
+        data = request.get_json() or {}
 
         location = (data.get("location") or "").strip()
 
@@ -1343,41 +1334,17 @@ def update_location():
                 "error": "Location is required"
             }), 400
 
-        # 1️⃣ Check ID exists
-        lookup = (
-            supabase
-            .table("dere")
-            .select("id")
-            .eq("id", record_id)
-            .execute()
-        )
-
-        if not lookup.data:
-            return jsonify({
-                "success": False,
-                "error": "ID not found"
-            }), 404
-
-        # 2️⃣ Update location
         update_resp = (
             supabase
             .table("dere")
             .update({"location": location})
-            .eq("id", record_id)
+            .eq("id", user_id)
             .execute()
         )
 
-        if getattr(update_resp, "error", None):
-            return jsonify({
-                "success": False,
-                "error": "Failed to update location"
-            }), 500
-
         return jsonify({
             "success": True,
-            "message": "Location updated successfully",
-            "id": record_id,
-            "location": location
+            "message": "Location updated"
         }), 200
 
     except Exception as e:
