@@ -39,7 +39,8 @@ from flask_jwt_extended import (
 load_dotenv()
 
 DEVICE_SECRET = os.environ.get("MACRO_DEVICE_SECRET")
-
+if not DEVICE_SECRET:
+    raise RuntimeError("MACRO_DEVICE_SECRET missing from environment variables")
 
 # ---------- logging ----------
 logging.basicConfig(level=logging.INFO)
