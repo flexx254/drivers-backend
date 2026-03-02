@@ -160,6 +160,9 @@ except Exception as e:
     logger.exception("Failed to create Supabase client: %s", str(e))
     # keep supabase as None; routes will return helpful error if used
 
+DEVICE_SECRET = os.environ.get("MACRO_DEVICE_SECRET")
+
+
 # -----------------------------
 # CLOUDINARY CONFIG (optional)
 # -----------------------------
@@ -2017,6 +2020,75 @@ def check_driver_status():
     except Exception as e:
         print("Driver status check error:", e)
         return jsonify({"fully_registered": False}), 500
+
+
+@app.route("/macro-callback", methods=["POST"])
+def macro_callback():
+
+    # -----------------------------
+    # Device Secret Authentication
+    # -----------------------------
+    device_key = request.headers.get("X-DEVICE-KEY")
+
+    if not DEVICE_SECRET or device_key != DEVICE_SECRET:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        data = request.get_json()
+
+        receipt = data.get("receipt")
+        phone = data.get("phone")
+        amount = data.get("amount")
+        reference = data.get("reference")
+
+        if not receipt or not phone or not amount:
+            return jsonify({"error": "Missing fields"}), 400
+
+        # -----------------------------
+        # Prevent Duplicate Receipt
+        # -----------------------------
+        existing = supabase.table("payment") \
+            .select("*") \
+            .eq("receipt", receipt) \
+            .execute()
+
+        if existing.data:
+            return jsonify({"status": "duplicate"}), 200
+
+        # -----------------------------
+        # Verify Intent Exists and Pending
+        # -----------------------------
+        intent = supabase.table("payment_intent") \
+            .select("*") \
+            .eq("id", reference) \
+            .eq("status", "pending") \
+            .execute()
+
+        if not intent.data:
+            return jsonify({"error": "invalid intent"}), 404
+
+        # -----------------------------
+        # Process Payment
+        # -----------------------------
+        supabase.table("payment").insert({
+            "receipt": receipt,
+            "phone": phone,
+            "amount": amount,
+            "reference": reference,
+            "verification": "confirmed"
+        }).execute()
+
+        # Mark intent completed
+        supabase.table("payment_intent") \
+            .update({"status": "completed"}) \
+            .eq("id", reference) \
+            .execute()
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        print("Callback error:", e)
+        return jsonify({"error": "server error"}), 500
 # ============================================================
 # RUN APP
 # ============================================================
