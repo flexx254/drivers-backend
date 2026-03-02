@@ -38,6 +38,8 @@ from flask_jwt_extended import (
 # -----------------------------
 load_dotenv()
 
+DEVICE_SECRET = os.environ.get("MACRO_DEVICE_SECRET")
+
 
 # ---------- logging ----------
 logging.basicConfig(level=logging.INFO)
@@ -160,7 +162,7 @@ except Exception as e:
     logger.exception("Failed to create Supabase client: %s", str(e))
     # keep supabase as None; routes will return helpful error if used
 
-DEVICE_SECRET = os.environ.get("MACRO_DEVICE_SECRET")
+
 
 
 # -----------------------------
