@@ -1476,48 +1476,97 @@ def connect_owner_secure():
         }), 500
 
 
-
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
+        # --------------------------------------------------
+        # 1️⃣ DEVICE SECRET VERIFICATION
+        # --------------------------------------------------
+        device_key = request.headers.get("X-DEVICE-KEY")
+
+        if not DEVICE_SECRET or device_key != DEVICE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # --------------------------------------------------
+        # 2️⃣ GET SMS
+        # --------------------------------------------------
         data = request.get_json()
         sms_text = data.get("message")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
-        # 1️⃣ Extract the code from the start of the SMS
+        # --------------------------------------------------
+        # 3️⃣ EXTRACT RECEIPT CODE
+        # --------------------------------------------------
         code_match = re.match(r'^([A-Z0-9]+)', sms_text)
         code = code_match.group(1) if code_match else None
 
-        # 2️⃣ Extract amount after "Ksh"
+        if not code:
+            return jsonify({"error": "Invalid receipt code"}), 400
+
+        # --------------------------------------------------
+        # 4️⃣ PREVENT DUPLICATE RECEIPT
+        # --------------------------------------------------
+        existing = supabase.table("payment") \
+            .select("id") \
+            .eq("code", code) \
+            .execute()
+
+        if existing.data:
+            return jsonify({"status": "duplicate"}), 200
+
+        # --------------------------------------------------
+        # 5️⃣ EXTRACT AMOUNT
+        # --------------------------------------------------
         amount_match = re.search(r'Ksh\s*([\d,]+(?:\.\d{2})?)', sms_text)
-        amount = amount_match.group(1) if amount_match else None
+        amount = amount_match.group(1).replace(",", "") if amount_match else None
 
-        # 3️⃣ Extract sender names after "from"
-        name_match = re.search(
-            r'from\s+(?:[A-Z\s]+-\s*)?([A-Za-z]+(?:\s+[A-Za-z]+)+)(?=\s+\d|\s+has|\s+on|\.)',
-            sms_text
-        )
-        names = name_match.group(1).strip() if name_match else None
+        if not amount:
+            return jsonify({"error": "Amount not found"}), 400
 
-        # 4️⃣ Extract phone number (masked or full)
+        amount = float(amount)
+
+        # --------------------------------------------------
+        # 6️⃣ EXTRACT PHONE
+        # --------------------------------------------------
         phone_match = re.search(r'\b(\d{6,10}\*{0,4})\b', sms_text)
         phone = phone_match.group(1) if phone_match else None
 
-        # 5️⃣ Normalize phone number (Kenya)
-        normalized_phone = phone
-        if phone and '*' not in phone:
-            if phone.startswith('07') and len(phone) == 10:
-                normalized_phone = '+254' + phone[1:]
-            elif len(phone) == 9:
-                normalized_phone = '+254' + phone
-            elif phone.startswith('254'):
-                normalized_phone = '+' + phone
-            elif phone.startswith('+254'):
-                normalized_phone = phone
+        if not phone or "*" in phone:
+            return jsonify({"error": "Invalid or masked phone"}), 400
 
-        # 6️⃣ Extract payment date/time (Kenya time)
+        # Normalize Kenyan phone
+        if phone.startswith('07') and len(phone) == 10:
+            normalized_phone = '+254' + phone[1:]
+        elif len(phone) == 9:
+            normalized_phone = '+254' + phone
+        elif phone.startswith('254'):
+            normalized_phone = '+' + phone
+        elif phone.startswith('+254'):
+            normalized_phone = phone
+        else:
+            return jsonify({"error": "Invalid phone format"}), 400
+
+        # --------------------------------------------------
+        # 7️⃣ VERIFY MATCHING PENDING INTENT
+        # --------------------------------------------------
+        intent_response = supabase.table("payment_intent") \
+            .select("*") \
+            .eq("phone", normalized_phone) \
+            .eq("amount", amount) \
+            .eq("status", "pending") \
+            .execute()
+
+        if not intent_response.data:
+            return jsonify({"error": "No matching pending intent"}), 404
+
+        intent = intent_response.data[0]
+        intent_id = intent["id"]
+
+        # --------------------------------------------------
+        # 8️⃣ EXTRACT PAYMENT TIME
+        # --------------------------------------------------
         paid_at_match = re.search(
             r'on\s+(\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2})?)',
             sms_text
@@ -1536,20 +1585,43 @@ def receive_payment_sms():
         else:
             paid_at = datetime.now(KENYA_TZ)
 
-        # Insert into Supabase payment table
+        # --------------------------------------------------
+        # 9️⃣ INSERT PAYMENT
+        # --------------------------------------------------
         insert_response = supabase.table("payment").insert({
             "sms": sms_text,
             "code": code,
             "amount": amount,
-            "names": names,
             "phone": normalized_phone,
+            "intent_id": intent_id,
             "paid_at": paid_at.isoformat()
         }).execute()
 
-        if insert_response.data:
-            return jsonify({"status": "success", "inserted": insert_response.data[0]}), 200
-        else:
-            return jsonify({"status": "failed", "error": "Could not insert SMS"}), 500
+        if not insert_response.data:
+            return jsonify({"error": "Payment insert failed"}), 500
+
+        # --------------------------------------------------
+        # 🔟 UPDATE INTENT STATUS TO COMPLETED
+        # --------------------------------------------------
+        supabase.table("payment_intent") \
+            .update({"status": "completed"}) \
+            .eq("id", intent_id) \
+            .execute()
+
+        # --------------------------------------------------
+        # 1️⃣1️⃣ OPTIONAL: ACTIVATE DRIVER ACCESS HERE
+        # --------------------------------------------------
+        # Example:
+        # supabase.table("drivers") \
+        #     .update({"can_connect": True}) \
+        #     .eq("phone", normalized_phone) \
+        #     .execute()
+
+        return jsonify({
+            "status": "success",
+            "receipt": code,
+            "intent_id": intent_id
+        }), 200
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
