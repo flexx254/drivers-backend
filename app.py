@@ -1479,31 +1479,39 @@ def connect_owner_secure():
 @app.route('/payment', methods=['POST'])
 def receive_payment_sms():
     try:
+
         # --------------------------------------------------
         # 1️⃣ DEVICE SECRET VERIFICATION
         # --------------------------------------------------
-        device_key = request.headers.get("X-DEVICE-KEY")
+        device_key = request.headers.get("X-DEVICE-KEY", "")
 
-        if not DEVICE_SECRET or device_key != DEVICE_SECRET:
+        if device_key != DEVICE_SECRET:
             return jsonify({"error": "Unauthorized"}), 403
 
+
         # --------------------------------------------------
-        # 2️⃣ GET SMS
+        # 2️⃣ GET SMS (JSON OR RAW)
         # --------------------------------------------------
-        data = request.get_json()
-        sms_text = data.get("message")
+        data = request.get_json(silent=True)
+
+        if data:
+            sms_text = data.get("message")
+        else:
+            sms_text = request.data.decode("utf-8")
 
         if not sms_text:
             return jsonify({"error": "No SMS message provided"}), 400
 
+
         # --------------------------------------------------
         # 3️⃣ EXTRACT RECEIPT CODE
         # --------------------------------------------------
-        code_match = re.match(r'^([A-Z0-9]+)', sms_text)
-        code = code_match.group(1) if code_match else None
+        code_match = re.search(r'\b[A-Z0-9]{8,12}\b', sms_text)
+        code = code_match.group(0) if code_match else None
 
         if not code:
             return jsonify({"error": "Invalid receipt code"}), 400
+
 
         # --------------------------------------------------
         # 4️⃣ PREVENT DUPLICATE RECEIPT
@@ -1516,37 +1524,37 @@ def receive_payment_sms():
         if existing.data:
             return jsonify({"status": "duplicate"}), 200
 
+
         # --------------------------------------------------
         # 5️⃣ EXTRACT AMOUNT
         # --------------------------------------------------
         amount_match = re.search(r'Ksh\s*([\d,]+(?:\.\d{2})?)', sms_text)
-        amount = amount_match.group(1).replace(",", "") if amount_match else None
 
-        if not amount:
+        if not amount_match:
             return jsonify({"error": "Amount not found"}), 400
 
-        amount = float(amount)
+        amount = float(amount_match.group(1).replace(",", ""))
+
 
         # --------------------------------------------------
         # 6️⃣ EXTRACT PHONE
         # --------------------------------------------------
-        phone_match = re.search(r'\b(\d{6,10}\*{0,4})\b', sms_text)
-        phone = phone_match.group(1) if phone_match else None
+        phone_match = re.search(r'\b(07\d{8}|254\d{9}|\+254\d{9})\b', sms_text)
 
-        if not phone or "*" in phone:
-            return jsonify({"error": "Invalid or masked phone"}), 400
+        if not phone_match:
+            return jsonify({"error": "Phone not found"}), 400
+
+        phone = phone_match.group(0)
+
 
         # Normalize Kenyan phone
-        if phone.startswith('07') and len(phone) == 10:
+        if phone.startswith('07'):
             normalized_phone = '+254' + phone[1:]
-        elif len(phone) == 9:
-            normalized_phone = '+254' + phone
         elif phone.startswith('254'):
             normalized_phone = '+' + phone
-        elif phone.startswith('+254'):
-            normalized_phone = phone
         else:
-            return jsonify({"error": "Invalid phone format"}), 400
+            normalized_phone = phone
+
 
         # --------------------------------------------------
         # 7️⃣ VERIFY MATCHING PENDING INTENT
@@ -1564,6 +1572,7 @@ def receive_payment_sms():
         intent = intent_response.data[0]
         intent_id = intent["id"]
 
+
         # --------------------------------------------------
         # 8️⃣ EXTRACT PAYMENT TIME
         # --------------------------------------------------
@@ -1574,6 +1583,7 @@ def receive_payment_sms():
 
         if paid_at_match:
             paid_at_str = paid_at_match.group(1)
+
             try:
                 paid_at = datetime.strptime(paid_at_str, '%d/%m/%y %H:%M')
             except ValueError:
@@ -1581,9 +1591,12 @@ def receive_payment_sms():
                     paid_at = datetime.strptime(paid_at_str, '%d/%m/%y')
                 except ValueError:
                     paid_at = datetime.now(KENYA_TZ)
+
             paid_at = paid_at.replace(tzinfo=KENYA_TZ)
+
         else:
             paid_at = datetime.now(KENYA_TZ)
+
 
         # --------------------------------------------------
         # 9️⃣ INSERT PAYMENT
@@ -1600,22 +1613,24 @@ def receive_payment_sms():
         if not insert_response.data:
             return jsonify({"error": "Payment insert failed"}), 500
 
+
         # --------------------------------------------------
-        # 🔟 UPDATE INTENT STATUS TO COMPLETED
+        # 🔟 UPDATE INTENT STATUS
         # --------------------------------------------------
         supabase.table("payment_intent") \
             .update({"status": "completed"}) \
             .eq("id", intent_id) \
             .execute()
 
+
         # --------------------------------------------------
-        # 1️⃣1️⃣ OPTIONAL: ACTIVATE DRIVER ACCESS HERE
+        # 1️⃣1️⃣ OPTIONAL DRIVER ACTIVATION
         # --------------------------------------------------
-        # Example:
         # supabase.table("drivers") \
         #     .update({"can_connect": True}) \
         #     .eq("phone", normalized_phone) \
         #     .execute()
+
 
         return jsonify({
             "status": "success",
@@ -1623,9 +1638,12 @@ def receive_payment_sms():
             "intent_id": intent_id
         }), 200
 
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
 
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 
 @app.route("/set-purpose-figures", methods=["POST"])
