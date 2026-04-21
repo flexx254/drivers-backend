@@ -2114,14 +2114,13 @@ def check_driver_status():
         print("Driver status check error:", e)
         return jsonify({"fully_registered": False}), 500
         
-
+        
 @app.route("/wake-render")
 def wake_render():
     return jsonify({
         "status": "server awake",
-        "time": datetime.datetime.utcnow().isoformat()
+        "time": datetime.utcnow().isoformat()
     })
-
 
 
 # ============================================================
