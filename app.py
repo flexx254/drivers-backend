@@ -258,8 +258,10 @@ def index():
 
 # ==========================================================# ROUTE: REGISTER NAME ONLY (TABLE: dere)
 # 
+VALID_SACCOS = ["OOD", "DOD", "NONE", "OWNER"]
 
 @app.route("/register", methods=["POST"])
+@limiter.limit("5 per minute")
 def register():
     try:
         data = request.get_json(force=True, silent=False) or {}
@@ -267,7 +269,6 @@ def register():
         logger.exception("Failed to parse JSON body: %s", str(e))
         return jsonify({"success": False, "error": "Invalid JSON body"}), 400
 
-    # FIELDS
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     phone = (data.get("phone_number") or "").strip()
@@ -275,29 +276,24 @@ def register():
     password = data.get("password") or ""
     confirm = data.get("confirm") or ""
 
-    # REQUIRED FIELDS
     if not name:
         return jsonify({"success": False, "error": "Name is required"}), 400
     if not email:
         return jsonify({"success": False, "error": "Email is required"}), 400
     if not phone:
         return jsonify({"success": False, "error": "Phone number is required"}), 400
-    if not sacco:
-        return jsonify({"success": False, "error": "Sacco is required"}), 400
+    if sacco not in VALID_SACCOS:
+        return jsonify({"success": False, "error": "Invalid sacco selection"}), 400
 
-    # EMAIL FORMAT
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"success": False, "error": "Invalid email address"}), 400
 
-    # PHONE NUMBER FORMAT (+254XXXXXXXXX)
     if not re.match(r"^\+254\d{9}$", phone):
         return jsonify({"success": False, "error": "Phone must be in +254XXXXXXXXX format"}), 400
 
-    # PASSWORD VALIDATION
-    if not password:
-        return jsonify({"success": False, "error": "Password is required"}), 400
-    if not confirm:
-        return jsonify({"success": False, "error": "Confirm password is required"}), 400
+    if not password or not confirm:
+        return jsonify({"success": False, "error": "Password fields required"}), 400
+
     if password != confirm:
         return jsonify({"success": False, "error": "Passwords do not match"}), 400
 
@@ -305,18 +301,30 @@ def register():
     if not ok:
         return jsonify({"success": False, "error": msg}), 400
 
-    # HASH PASSWORD
+    # 🔥 DUPLICATE CHECK
+    try:
+        existing = supabase.table("dere") \
+            .select("email, phone_number") \
+            .or_(f"email.eq.{email},phone_number.eq.{phone}") \
+            .execute()
+
+        if existing.data:
+            for user in existing.data:
+                if user.get("email") == email:
+                    return jsonify({"success": False, "error": "Email already exists"}), 400
+                if user.get("phone_number") == phone:
+                    return jsonify({"success": False, "error": "Phone number already exists"}), 400
+
+    except Exception as e:
+        logger.exception("Duplicate check failed: %s", str(e))
+        return jsonify({"success": False, "error": "Error checking existing users"}), 500
+
     try:
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     except Exception as e:
         logger.exception("Password hashing failed: %s", str(e))
         return jsonify({"success": False, "error": "Server error hashing password"}), 500
 
-    # DB CLIENT CHECK
-    if supabase is None:
-        return jsonify({"success": False, "error": "Database client missing"}), 500
-
-    # INSERT INTO dere
     try:
         response = supabase.table("dere").insert({
             "full_name": name,
@@ -326,9 +334,7 @@ def register():
             "sacco": sacco
         }).execute()
 
-        resp_error = getattr(response, "error", None)
-        if resp_error:
-            logger.error("Supabase insert error: %s", resp_error)
+        if getattr(response, "error", None):
             return jsonify({"success": False, "error": "Database insert failed"}), 500
 
         return jsonify({
@@ -338,7 +344,7 @@ def register():
 
     except Exception as e:
         logger.exception("Unexpected supabase insert error: %s", str(e))
-        return jsonify({"success": False, "error": "Internal server error during registration"}), 500
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 # ============================================================
 # ROUTE: SEND CONTINUE REGISTRATION EMAIL
