@@ -2122,6 +2122,28 @@ def wake_render():
     })
 
 
+@app.route("/owner-contracts", methods=["GET"])
+def owner_contracts():
+    try:
+        user = get_current_user()  # from JWT
+        owner_id = user["id"]
+
+        res = supabase.table("contracts") \
+            .select("*") \
+            .eq("owner_id", owner_id) \
+            .eq("status", "active") \
+            .execute()
+
+        return jsonify(res.data), 200
+
+    except Exception as e:
+        return jsonify({"error": "Failed to load contracts"}), 500
+
+
+
+
+
+
 # ============================================================
 # RUN APP
 # ============================================================
