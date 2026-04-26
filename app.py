@@ -2142,8 +2142,82 @@ def owner_contracts():
 
 
 
+@app.route("/set-contract", methods=["POST"])
+def set_contract():
+    try:
+        user = get_current_user()
+        owner_id = user["id"]
+
+        data = request.get_json()
+
+        driver_id = data.get("driver_id")
+        daily_amount = data.get("daily_amount")
+        work_days = data.get("work_days")
+
+        if not driver_id or not daily_amount:
+            return jsonify({"error": "Missing fields"}), 400
+
+        supabase.table("contracts").insert({
+            "owner_id": owner_id,
+            "driver_id": driver_id,
+            "daily_amount": daily_amount,
+            "work_days": work_days,
+            "status": "pending",  # driver must accept
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
+
+        return jsonify({"message": "Contract created"}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Failed to create contract"}), 500
 
 
+
+
+@app.route("/terminate-contract", methods=["POST"])
+def terminate_contract():
+    try:
+        user = get_current_user()
+        owner_id = user["id"]
+
+        data = request.get_json()
+        contract_id = data.get("contract_id")
+
+        if not contract_id:
+            return jsonify({"error": "Missing contract ID"}), 400
+
+        supabase.table("contracts") \
+            .update({"status": "terminated"}) \
+            .eq("id", contract_id) \
+            .eq("owner_id", owner_id) \
+            .execute()
+
+        return jsonify({"message": "Contract terminated"}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Failed to terminate"}), 500
+
+
+@app.route("/payment-status/<int:contract_id>", methods=["GET"])
+def payment_status(contract_id):
+    try:
+        today = datetime.utcnow().date().isoformat()
+
+        res = supabase.table("payments") \
+            .select("*") \
+            .eq("contract_id", contract_id) \
+            .eq("payment_date", today) \
+            .execute()
+
+        paid_today = len(res.data) > 0
+
+        return jsonify({
+            "paid_today": paid_today
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Failed to check payment"}), 500
+        
 # ============================================================
 # RUN APP
 # ============================================================
