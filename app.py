@@ -1263,25 +1263,43 @@ def partner_reg():
 @app.route("/available-cars", methods=["GET"])
 def available_cars():
     try:
-        # Fetch all cars from Supabase
-        response = supabase.table("owner").select(
-            "car_image_url, car_make, car_model, number_plate"
-        ).execute()
+        # Get query params
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 4))
+
+        # Safety limits (prevent abuse)
+        if limit > 20:
+            limit = 20
+
+        start = (page - 1) * limit
+        end = start + limit - 1
+
+        # Fetch paginated data
+        response = supabase.table("owner") \
+            .select("car_image_url, car_make, car_model, number_plate", count="exact") \
+            .range(start, end) \
+            .execute()
 
         if getattr(response, "error", None):
             return jsonify({"success": False, "error": "Failed to fetch cars"}), 500
 
-        cars = response.data  # This is a list of dictionaries
+        cars = response.data
+        total = response.count if response.count is not None else 0
 
         return jsonify({
             "success": True,
-            "cars": cars
+            "cars": cars,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit
+            }
         }), 200
 
     except Exception as e:
         logger.exception("Fetching available cars error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-
 
 @app.route("/connect-owner", methods=["POST"])
 def connect_owner():
