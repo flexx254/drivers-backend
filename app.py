@@ -2235,6 +2235,97 @@ def payment_status(contract_id):
 
     except Exception as e:
         return jsonify({"error": "Failed to check payment"}), 500
+
+
+@app.route("/send-request", methods=["POST"])
+@authenticate_token
+def send_request():
+    try:
+        driver_id = request.user["id"]
+        data = request.get_json()
+
+        number_plate = data.get("number_plate")
+        location = data.get("location")
+
+        if not number_plate or not location:
+            return jsonify({
+                "error": "Number plate and location are required"
+            }), 400
+
+        conn = pool.getconn()
+        cur = conn.cursor()
+
+        # 🔥 1. BLOCK duplicate pending requests
+        cur.execute("""
+            SELECT id FROM connections
+            WHERE driver_id = %s AND status = 'pending'
+        """, (driver_id,))
+
+        if cur.fetchone():
+            return jsonify({
+                "error": "You already have a pending request"
+            }), 400
+
+        # 🔥 2. Get driver details FROM dere
+        cur.execute("""
+            SELECT id, full_name, profile_pic_url, phone_number
+            FROM dere
+            WHERE id = %s
+        """, (driver_id,))
+
+        driver = cur.fetchone()
+
+        if not driver:
+            return jsonify({"error": "Driver not found"}), 404
+
+        # 🔥 3. Update location IN dere
+        cur.execute("""
+            UPDATE dere
+            SET location = %s
+            WHERE id = %s
+        """, (location, driver_id))
+
+        # 🔥 4. Insert into connections
+        cur.execute("""
+            INSERT INTO connections (
+                driver_id,
+                full_name,
+                profile_pic_url,
+                phone_number,
+                location,
+                number_plate,
+                status
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id, status
+        """, (
+            driver[0],  # id
+            driver[1],  # full_name
+            driver[2],  # profile_pic_url
+            driver[3],  # phone_number
+            location,
+            number_plate,
+            "pending"
+        ))
+
+        new_request = cur.fetchone()
+
+        conn.commit()
+        cur.close()
+        pool.putconn(conn)
+
+        return jsonify({
+            "success": True,
+            "message": "Request sent successfully",
+            "request": {
+                "id": new_request[0],
+                "status": new_request[1]
+            }
+        })
+
+    except Exception as e:
+        print("SEND REQUEST ERROR:", e)
+        return jsonify({"error": "Server error"}), 500
         
 # ============================================================
 # RUN APP
