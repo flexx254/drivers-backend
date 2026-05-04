@@ -2237,12 +2237,22 @@ def payment_status(contract_id):
         return jsonify({"error": "Failed to check payment"}), 500
 
 
+
+
 @app.route("/send-request", methods=["POST"])
-@authenticate_token
+@jwt_required()
 def send_request():
+    conn = None
+    cur = None
+
     try:
-        driver_id = request.user["id"]
+        # ✅ Get driver ID from JWT
+        driver_id = get_jwt_identity()
+
         data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "Invalid JSON body"}), 400
 
         number_plate = data.get("number_plate")
         location = data.get("location")
@@ -2311,8 +2321,6 @@ def send_request():
         new_request = cur.fetchone()
 
         conn.commit()
-        cur.close()
-        pool.putconn(conn)
 
         return jsonify({
             "success": True,
@@ -2324,9 +2332,16 @@ def send_request():
         })
 
     except Exception as e:
-        print("SEND REQUEST ERROR:", e)
+        print("🔥 SEND REQUEST ERROR:", str(e))
         return jsonify({"error": "Server error"}), 500
-        
+
+    finally:
+        # ✅ ALWAYS release connection (important fix)
+        if cur:
+            cur.close()
+        if conn:
+            pool.putconn(conn)
+
 # ============================================================
 # RUN APP
 # ============================================================
