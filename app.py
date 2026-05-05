@@ -2238,7 +2238,6 @@ def payment_status(contract_id):
 
 
 
-
 @app.route("/send-request", methods=["POST"])
 @jwt_required()
 def send_request():
@@ -2246,101 +2245,58 @@ def send_request():
     cur = None
 
     try:
-        # ✅ Get driver ID from JWT
+        print("🧪 STEP 1: Route hit")
+
         driver_id = get_jwt_identity()
+        print("🧪 DRIVER ID:", driver_id)
 
         data = request.get_json()
+        print("🧪 RAW DATA:", data)
 
         if not data:
-            return jsonify({"error": "Invalid JSON body"}), 400
+            return jsonify({"error": "No JSON received"}), 400
 
-        number_plate = data.get("number_plate")
         location = data.get("location")
+        print("🧪 LOCATION:", location)
 
-        if not number_plate or not location:
-            return jsonify({
-                "error": "Number plate and location are required"
-            }), 400
+        if not location:
+            return jsonify({"error": "Location required"}), 400
 
+        # 🔥 Connect to DB
         conn = pool.getconn()
         cur = conn.cursor()
+        print("🧪 DB connected")
 
-        # 🔥 1. BLOCK duplicate pending requests
-        cur.execute("""
-            SELECT id FROM connections
-            WHERE driver_id = %s AND status = 'pending'
-        """, (driver_id,))
-
-        if cur.fetchone():
-            return jsonify({
-                "error": "You already have a pending request"
-            }), 400
-
-        # 🔥 2. Get driver details FROM dere
-        cur.execute("""
-            SELECT id, full_name, profile_pic_url, phone_number
-            FROM dere
-            WHERE id = %s
-        """, (driver_id,))
-
-        driver = cur.fetchone()
-
-        if not driver:
-            return jsonify({"error": "Driver not found"}), 404
-
-        # 🔥 3. Update location IN dere
+        # 🔥 ONLY update location
         cur.execute("""
             UPDATE dere
             SET location = %s
             WHERE id = %s
         """, (location, driver_id))
 
-        # 🔥 4. Insert into connections
-        cur.execute("""
-            INSERT INTO connections (
-                driver_id,
-                full_name,
-                profile_pic_url,
-                phone_number,
-                location,
-                number_plate,
-                status
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-            RETURNING id, status
-        """, (
-            driver[0],  # id
-            driver[1],  # full_name
-            driver[2],  # profile_pic_url
-            driver[3],  # phone_number
-            location,
-            number_plate,
-            "pending"
-        ))
-
-        new_request = cur.fetchone()
+        print("🧪 UPDATE executed")
 
         conn.commit()
+        print("🧪 COMMIT done")
 
         return jsonify({
             "success": True,
-            "message": "Request sent successfully",
-            "request": {
-                "id": new_request[0],
-                "status": new_request[1]
-            }
+            "message": "Location updated successfully"
         })
 
     except Exception as e:
-        print("🔥 SEND REQUEST ERROR:", str(e))
-        return jsonify({"error": "Server error"}), 500
+        import traceback
+        print("🔥 ERROR:")
+        traceback.print_exc()
+
+        return jsonify({"error": str(e)}), 500
 
     finally:
-        # ✅ ALWAYS release connection (important fix)
         if cur:
             cur.close()
         if conn:
             pool.putconn(conn)
+
 
 # ============================================================
 # RUN APP
