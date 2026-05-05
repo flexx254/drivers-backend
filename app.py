@@ -2238,64 +2238,45 @@ def payment_status(contract_id):
 
 
 
+
 @app.route("/send-request", methods=["POST"])
 @jwt_required()
 def send_request():
-    conn = None
-    cur = None
-
     try:
         print("🧪 STEP 1: Route hit")
 
-        driver_id = get_jwt_identity()
-        print("🧪 DRIVER ID:", driver_id)
+        # 🔐 Get user (same pattern as your other routes)
+        email = get_jwt_identity()
+
+        if not email:
+            return jsonify({"error": "Unauthorized"}), 401
 
         data = request.get_json()
-        print("🧪 RAW DATA:", data)
-
-        if not data:
-            return jsonify({"error": "No JSON received"}), 400
-
         location = data.get("location")
-        print("🧪 LOCATION:", location)
 
         if not location:
             return jsonify({"error": "Location required"}), 400
 
-        # 🔥 Connect to DB
-        conn = pool.getconn()
-        cur = conn.cursor()
-        print("🧪 DB connected")
+        # 🔥 Update location in dere (JUST THIS STEP)
+        response = supabase.table("dere").update({
+            "location": location
+        }).eq("email", email).execute()
 
-        # 🔥 ONLY update location
-        cur.execute("""
-            UPDATE dere
-            SET location = %s
-            WHERE id = %s
-        """, (location, driver_id))
+        # 🔍 Debug response
+        print("Supabase response:", response)
 
-        print("🧪 UPDATE executed")
-
-        conn.commit()
-        print("🧪 COMMIT done")
+        if getattr(response, "error", None):
+            return jsonify({"error": str(response.error)}), 500
 
         return jsonify({
             "success": True,
-            "message": "Location updated successfully"
+            "message": "Location updated"
         })
 
     except Exception as e:
         import traceback
-        print("🔥 ERROR:")
         traceback.print_exc()
-
         return jsonify({"error": str(e)}), 500
-
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            pool.putconn(conn)
 
 
 # ============================================================
