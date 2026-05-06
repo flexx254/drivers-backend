@@ -2245,24 +2245,39 @@ def send_request():
     try:
         print("🧪 STEP 1: Route hit")
 
-        # 🔐 Get user (same pattern as your other routes)
+        # 🔐 Get user
         email = get_jwt_identity()
-
         if not email:
             return jsonify({"error": "Unauthorized"}), 401
 
         data = request.get_json()
-        location = data.get("location")
 
+        location = (data.get("location") or "").strip()
+        owner_number_plate = (data.get("number_plate") or "").strip().upper()
+
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
         if not location:
             return jsonify({"error": "Location required"}), 400
 
-        # 🔥 Update location in dere (JUST THIS STEP)
+        if not owner_number_plate:
+            return jsonify({"error": "Number plate required"}), 400
+
+        # Optional normalization (important for matching)
+        owner_number_plate = owner_number_plate.replace(" ", "")
+
+        print("📍 Location:", location)
+        print("🚗 Owner Plate:", owner_number_plate)
+
+        # -----------------------------
+        # UPDATE dere (🔥 THIS TRIGGERS EVERYTHING)
+        # -----------------------------
         response = supabase.table("dere").update({
-            "location": location
+            "location": location,
+            "owner_number_plate": owner_number_plate   # 🔥 CRITICAL
         }).eq("email", email).execute()
 
-        # 🔍 Debug response
         print("Supabase response:", response)
 
         if getattr(response, "error", None):
@@ -2270,14 +2285,13 @@ def send_request():
 
         return jsonify({
             "success": True,
-            "message": "Location updated"
+            "message": "Request sent successfully"
         })
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 # ============================================================
 # RUN APP
