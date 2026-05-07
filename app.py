@@ -2293,6 +2293,59 @@ def send_request():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route("/my-request-status", methods=["GET"])
+@jwt_required()
+def my_request_status():
+    try:
+
+        driver_id = get_jwt_identity()
+
+        conn = pool.getconn()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT 
+                status,
+                number_plate,
+                car_make,
+                car_model,
+                car_image_url,
+                owner_full_name,
+                owner_phone_number
+            FROM connections
+            WHERE driver_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (driver_id,))
+
+        row = cur.fetchone()
+
+        cur.close()
+        pool.putconn(conn)
+
+        if not row:
+            return jsonify({
+                "success": False
+            })
+
+        return jsonify({
+            "success": True,
+            "connection": {
+                "status": row[0],
+                "number_plate": row[1],
+                "car_make": row[2],
+                "car_model": row[3],
+                "car_image_url": row[4],
+                "owner_full_name": row[5],
+                "owner_phone_number": row[6]
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
