@@ -2293,12 +2293,13 @@ def send_request():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/my-request-status", methods=["GET"])
 @jwt_required()
 def my_request_status():
     try:
 
-        driver_id = get_jwt_identity()
+        driver_id = int(get_jwt_identity())
 
         conn = pool.getconn()
         cur = conn.cursor()
@@ -2345,7 +2346,6 @@ def my_request_status():
         return jsonify({
             "error": str(e)
         }), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
