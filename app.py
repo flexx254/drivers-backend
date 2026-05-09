@@ -2293,39 +2293,17 @@ def send_request():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+    
 
 @app.route("/my-request-status", methods=["GET"])
 @jwt_required()
 def my_request_status():
     try:
-
-        email = get_jwt_identity()
+        driver_id = get_jwt_identity()  # DIRECT
 
         conn = pool.getconn()
         cur = conn.cursor()
 
-        # 🔥 FIRST GET DRIVER ID USING EMAIL
-        cur.execute("""
-            SELECT id
-            FROM dere
-            WHERE email = %s
-            LIMIT 1
-        """, (email,))
-
-        driver_row = cur.fetchone()
-
-        if not driver_row:
-            cur.close()
-            pool.putconn(conn)
-
-            return jsonify({
-                "success": False,
-                "error": "Driver not found"
-            })
-
-        driver_id = driver_row[0]
-
-        # 🔥 NOW GET REQUEST
         cur.execute("""
             SELECT 
                 status,
@@ -2348,7 +2326,8 @@ def my_request_status():
 
         if not row:
             return jsonify({
-                "success": False
+                "success": False,
+                "message": "No request found"
             })
 
         return jsonify({
@@ -2365,9 +2344,7 @@ def my_request_status():
         })
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 # ============================================================
 # RUN APP
 # ============================================================
