@@ -2294,64 +2294,45 @@ def send_request():
         return jsonify({"error": str(e)}), 500
 
     
-
 @app.route("/my-request-status", methods=["GET"])
 @jwt_required()
 def my_request_status():
     try:
-        # 1. Identify the driver from their secure login token
-        driver_id = get_jwt_identity() 
+        driver_id = int(get_jwt_identity())
 
-        conn = pool.getconn()
-        cur = conn.cursor()
+        response = supabase.table("connections") \
+            .select("*") \
+            .eq("driver_id", driver_id) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
 
-        # 2. Search for the "on the table" (pending) request
-        cur.execute("""
-            SELECT 
-                status,
-                number_plate,
-                car_make,
-                car_model,
-                car_image_url,
-                owner_full_name,
-                owner_phone_number
-            FROM connections
-            WHERE driver_id = %s 
-            AND status = 'pending'  -- This is the "on the table" filter
-            ORDER BY created_at DESC
-            LIMIT 1
-        """, (driver_id,))
-
-        row = cur.fetchone()
-
-        # 3. Clean up the connection
-        cur.close()
-        pool.putconn(conn)
-
-        # 4. If no 'pending' request exists, tell the driver
-        if not row:
+        if not response.data:
             return jsonify({
-                "success": False,
-                "message": "You don't have any active requests on the table right now."
-            })
+                "success": True,
+                "connection": None
+            }), 200
 
-        # 5. Return the active request details
+        c = response.data[0]
+
         return jsonify({
             "success": True,
             "connection": {
-                "status": row[0],
-                "number_plate": row[1],
-                "car_make": row[2],
-                "car_model": row[3],
-                "car_image_url": row[4],
-                "owner_full_name": row[5],
-                "owner_phone_number": row[6]
+                "status": c.get("status"),
+                "number_plate": c.get("number_plate"),
+                "car_make": c.get("car_make"),
+                "car_model": c.get("car_model"),
+                "car_image_url": c.get("car_image_url"),
+                "owner_full_name": c.get("owner_full_name"),
+                "owner_phone_number": c.get("owner_phone_number")
             }
-        })
+        }), 200
 
     except Exception as e:
-        # If the database is down or something breaks
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # ============================================================
 # RUN APP
