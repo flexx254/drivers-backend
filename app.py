@@ -2299,11 +2299,13 @@ def send_request():
 @jwt_required()
 def my_request_status():
     try:
-        driver_id = get_jwt_identity()  # DIRECT
+        # 1. Identify the driver from their secure login token
+        driver_id = get_jwt_identity() 
 
         conn = pool.getconn()
         cur = conn.cursor()
 
+        # 2. Search for the "on the table" (pending) request
         cur.execute("""
             SELECT 
                 status,
@@ -2314,22 +2316,26 @@ def my_request_status():
                 owner_full_name,
                 owner_phone_number
             FROM connections
-            WHERE driver_id = %s
+            WHERE driver_id = %s 
+            AND status = 'pending'  -- This is the "on the table" filter
             ORDER BY created_at DESC
             LIMIT 1
         """, (driver_id,))
 
         row = cur.fetchone()
 
+        # 3. Clean up the connection
         cur.close()
         pool.putconn(conn)
 
+        # 4. If no 'pending' request exists, tell the driver
         if not row:
             return jsonify({
                 "success": False,
-                "message": "No request found"
+                "message": "You don't have any active requests on the table right now."
             })
 
+        # 5. Return the active request details
         return jsonify({
             "success": True,
             "connection": {
@@ -2344,7 +2350,9 @@ def my_request_status():
         })
 
     except Exception as e:
+        # If the database is down or something breaks
         return jsonify({"error": str(e)}), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
