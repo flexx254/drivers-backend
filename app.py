@@ -2299,11 +2299,33 @@ def send_request():
 def my_request_status():
     try:
 
-        driver_id = int(get_jwt_identity())
+        email = get_jwt_identity()
 
         conn = pool.getconn()
         cur = conn.cursor()
 
+        # 🔥 FIRST GET DRIVER ID USING EMAIL
+        cur.execute("""
+            SELECT id
+            FROM dere
+            WHERE email = %s
+            LIMIT 1
+        """, (email,))
+
+        driver_row = cur.fetchone()
+
+        if not driver_row:
+            cur.close()
+            pool.putconn(conn)
+
+            return jsonify({
+                "success": False,
+                "error": "Driver not found"
+            })
+
+        driver_id = driver_row[0]
+
+        # 🔥 NOW GET REQUEST
         cur.execute("""
             SELECT 
                 status,
