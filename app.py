@@ -2293,15 +2293,23 @@ def send_request():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-    
+
 @app.route("/my-request-status", methods=["GET"])
 @jwt_required()
 def my_request_status():
+
     try:
-        driver_id = int(get_jwt_identity())
+        driver_id = get_jwt_identity()
 
         response = supabase.table("connections") \
-            .select("*") \
+            .select("""
+                status,
+                owner_full_name,
+                owner_phone_number,
+                car_make,
+                car_model,
+                car_image_url
+            """) \
             .eq("driver_id", driver_id) \
             .order("created_at", desc=True) \
             .limit(1) \
@@ -2309,31 +2317,23 @@ def my_request_status():
 
         if not response.data:
             return jsonify({
-                "success": True,
-                "connection": None
-            }), 200
+                "success": False,
+                "message": "No request found"
+            }), 404
 
-        c = response.data[0]
+        connection = response.data[0]
 
         return jsonify({
             "success": True,
-            "connection": {
-                "status": c.get("status"),
-                "number_plate": c.get("number_plate"),
-                "car_make": c.get("car_make"),
-                "car_model": c.get("car_model"),
-                "car_image_url": c.get("car_image_url"),
-                "owner_full_name": c.get("owner_full_name"),
-                "owner_phone_number": c.get("owner_phone_number")
-            }
+            "connection": connection
         }), 200
 
     except Exception as e:
+        print(str(e))
         return jsonify({
             "success": False,
-            "error": str(e)
+            "message": str(e)
         }), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
