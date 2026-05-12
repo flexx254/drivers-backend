@@ -2299,8 +2299,14 @@ def send_request():
 def my_request_status():
 
     try:
-        driver_id = get_jwt_identity()
 
+        # Logged-in dere id from JWT
+        driver_id = int(get_jwt_identity())
+
+        # 🔥 DEBUG 1: confirm JWT value
+        print("JWT DRIVER ID:", driver_id)
+
+        # Find latest request in connections table
         response = supabase.table("connections") \
             .select("""
                 status,
@@ -2315,25 +2321,38 @@ def my_request_status():
             .limit(1) \
             .execute()
 
+        # 🔥 DEBUG 2: confirm DB response
+        print("SUPABASE RESPONSE:", response.data)
+
+        if getattr(response, "error", None):
+            return jsonify({
+                "success": False,
+                "error": "Failed to fetch request status"
+            }), 500
+
         if not response.data:
             return jsonify({
                 "success": False,
                 "message": "No request found"
             }), 404
 
-        connection = response.data[0]
-
         return jsonify({
             "success": True,
-            "connection": connection
+            "connection": response.data[0]
         }), 200
 
     except Exception as e:
-        print(str(e))
+
+        logger.exception(
+            "Fetching request status error: %s",
+            str(e)
+        )
+
         return jsonify({
             "success": False,
-            "message": str(e)
+            "error": "Server error"
         }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
