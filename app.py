@@ -2300,13 +2300,21 @@ def my_request_status():
 
     try:
 
-        # Logged-in dere id from JWT
-        driver_id = int(get_jwt_identity())
+        # Get JWT identity
+        driver_identity = get_jwt_identity()
 
-        # 🔥 DEBUG 1: confirm JWT value
-        print("JWT DRIVER ID:", driver_id)
+        # 🔥 DEBUG 1
+        print("JWT IDENTITY:", driver_identity)
+        print("TYPE:", type(driver_identity))
 
-        # Find latest request in connections table
+        # If JWT stores numeric id
+        # convert safely
+        try:
+            driver_id = int(driver_identity)
+        except:
+            driver_id = driver_identity
+
+        # Find latest request
         response = supabase.table("connections") \
             .select("""
                 status,
@@ -2321,10 +2329,12 @@ def my_request_status():
             .limit(1) \
             .execute()
 
-        # 🔥 DEBUG 2: confirm DB response
+        # 🔥 DEBUG 2
         print("SUPABASE RESPONSE:", response.data)
 
         if getattr(response, "error", None):
+            print("SUPABASE ERROR:", response.error)
+
             return jsonify({
                 "success": False,
                 "error": "Failed to fetch request status"
@@ -2334,7 +2344,7 @@ def my_request_status():
             return jsonify({
                 "success": False,
                 "message": "No request found"
-            }), 404
+            }), 200
 
         return jsonify({
             "success": True,
@@ -2343,14 +2353,11 @@ def my_request_status():
 
     except Exception as e:
 
-        logger.exception(
-            "Fetching request status error: %s",
-            str(e)
-        )
+        print("MY REQUEST STATUS ERROR:", str(e))
 
         return jsonify({
             "success": False,
-            "error": "Server error"
+            "error": str(e)
         }), 500
 
 # ============================================================
