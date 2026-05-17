@@ -2300,22 +2300,55 @@ def my_request_status():
 
     try:
 
-        identity = get_jwt_identity()
+        # JWT stores email
+        email = get_jwt_identity()
 
-        print("JWT IDENTITY:", identity)
-        print("TYPE:", type(identity))
+        print("JWT EMAIL:", email)
 
-        # TEST QUERY WITHOUT FILTER
+        # Find driver record first
+        driver_response = supabase.table("dere") \
+            .select("id") \
+            .eq("email", email) \
+            .single() \
+            .execute()
+
+        print("DRIVER RESPONSE:", driver_response.data)
+
+        if not driver_response.data:
+            return jsonify({
+                "success": False,
+                "error": "Driver not found"
+            }), 404
+
+        driver_id = driver_response.data["id"]
+
+        print("DRIVER ID:", driver_id)
+
+        # Now query connections properly
         response = supabase.table("connections") \
-            .select("*") \
+            .select("""
+                status,
+                owner_full_name,
+                owner_phone_number,
+                car_make,
+                car_model,
+                car_image_url
+            """) \
+            .eq("driver_id", driver_id) \
             .limit(1) \
             .execute()
 
-        print("SUPABASE RESPONSE:", response.data)
+        print("CONNECTION RESPONSE:", response.data)
+
+        if not response.data:
+            return jsonify({
+                "success": False,
+                "message": "No request found"
+            }), 200
 
         return jsonify({
             "success": True,
-            "connection": response.data[0] if response.data else None
+            "connection": response.data[0]
         }), 200
 
     except Exception as e:
@@ -2326,6 +2359,7 @@ def my_request_status():
             "success": False,
             "error": str(e)
         }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
