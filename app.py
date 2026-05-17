@@ -2300,25 +2300,36 @@ def my_request_status():
 
     try:
 
+        # Get logged-in user identity
         driver_id = get_jwt_identity()
 
-        print("JWT:", driver_id)
+        print("JWT IDENTITY:", driver_id)
 
+        # Fetch latest connection/request
         response = supabase.table("connections") \
             .select("*") \
+            .eq("driver_id", driver_id) \
             .limit(1) \
             .execute()
 
-        print("FULL RESPONSE:", response.data)
+        print("SUPABASE RESPONSE:", response.data)
 
+        # No request found
+        if not response.data:
+            return jsonify({
+                "success": False,
+                "message": "No request found"
+            }), 200
+
+        # Return FIRST connection object
         return jsonify({
             "success": True,
-            "data": response.data
-        })
+            "connection": response.data[0]
+        }), 200
 
     except Exception as e:
 
-        print("ERROR:", str(e))
+        print("MY REQUEST STATUS ERROR:", str(e))
 
         return jsonify({
             "success": False,
