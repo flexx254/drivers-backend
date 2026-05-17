@@ -2360,6 +2360,67 @@ def my_request_status():
             "error": str(e)
         }), 500
 
+
+@app.route("/owner-requests", methods=["GET"])
+@jwt_required()
+def owner_requests():
+
+    try:
+
+        # Owner email from JWT
+        email = get_jwt_identity()
+
+        print("OWNER EMAIL:", email)
+
+        # Find owner record
+        owner_response = supabase.table("car_owners") \
+            .select("id") \
+            .eq("email", email) \
+            .single() \
+            .execute()
+
+        if not owner_response.data:
+            return jsonify({
+                "success": False,
+                "error": "Owner not found"
+            }), 404
+
+        owner_id = owner_response.data["id"]
+
+        print("OWNER ID:", owner_id)
+
+        # Fetch requests for this owner
+        response = supabase.table("connections") \
+            .select("""
+                id,
+                status,
+                created_at,
+
+                full_name,
+                profile_pic_url,
+                phone_number,
+                location
+            """) \
+            .eq("owner_id", owner_id) \
+            .order("created_at", desc=True) \
+            .execute()
+
+        print("OWNER REQUESTS:", response.data)
+
+        return jsonify({
+            "success": True,
+            "requests": response.data
+        }), 200
+
+    except Exception as e:
+
+        print("OWNER REQUESTS ERROR:", str(e))
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
