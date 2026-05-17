@@ -2300,66 +2300,30 @@ def my_request_status():
 
     try:
 
-        # Get JWT identity
-        driver_identity = get_jwt_identity()
+        driver_id = get_jwt_identity()
 
-        # 🔥 DEBUG 1
-        print("JWT IDENTITY:", driver_identity)
-        print("TYPE:", type(driver_identity))
+        print("JWT:", driver_id)
 
-        # If JWT stores numeric id
-        # convert safely
-        try:
-            driver_id = int(driver_identity)
-        except:
-            driver_id = driver_identity
-
-        # Find latest request
         response = supabase.table("connections") \
-            .select("""
-                status,
-                owner_full_name,
-                owner_phone_number,
-                car_make,
-                car_model,
-                car_image_url
-            """) \
-            .eq("driver_id", driver_id) \
-            .order("created_at", desc=True) \
+            .select("*") \
             .limit(1) \
             .execute()
 
-        # 🔥 DEBUG 2
-        print("SUPABASE RESPONSE:", response.data)
-
-        if getattr(response, "error", None):
-            print("SUPABASE ERROR:", response.error)
-
-            return jsonify({
-                "success": False,
-                "error": "Failed to fetch request status"
-            }), 500
-
-        if not response.data:
-            return jsonify({
-                "success": False,
-                "message": "No request found"
-            }), 200
+        print("FULL RESPONSE:", response.data)
 
         return jsonify({
             "success": True,
-            "connection": response.data[0]
-        }), 200
+            "data": response.data
+        })
 
     except Exception as e:
 
-        print("MY REQUEST STATUS ERROR:", str(e))
+        print("ERROR:", str(e))
 
         return jsonify({
             "success": False,
             "error": str(e)
         }), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
