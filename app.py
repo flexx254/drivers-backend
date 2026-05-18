@@ -2421,6 +2421,96 @@ def owner_requests():
             "error": str(e)
         }), 500
 
+
+@app.route("/approve-request", methods=["POST"])
+@jwt_required()
+def approve_request():
+
+    try:
+
+        # Logged-in owner email from JWT
+        owner_email = get_jwt_identity()
+
+        print("OWNER EMAIL:", owner_email)
+
+        data = request.get_json()
+
+        # Request ID coming from frontend
+        connection_id = data.get("connection_id")
+
+        if not connection_id:
+            return jsonify({
+                "success": False,
+                "error": "connection_id is required"
+            }), 400
+
+        # Find owner using email
+        owner_response = supabase.table("owner") \
+            .select("id") \
+            .eq("email", owner_email) \
+            .single() \
+            .execute()
+
+        print("OWNER RESPONSE:", owner_response.data)
+
+        if not owner_response.data:
+            return jsonify({
+                "success": False,
+                "error": "Owner not found"
+            }), 404
+
+        owner_id = owner_response.data["id"]
+
+        print("OWNER ID:", owner_id)
+
+        # Confirm request exists and belongs to this owner
+        request_response = supabase.table("connections") \
+            .select("id, status") \
+            .eq("id", connection_id) \
+            .eq("owner_id", owner_id) \
+            .single() \
+            .execute()
+
+        print("REQUEST RESPONSE:", request_response.data)
+
+        if not request_response.data:
+            return jsonify({
+                "success": False,
+                "error": "Request not found"
+            }), 404
+
+        # Prevent re-approving
+        if request_response.data["status"] == "approved":
+            return jsonify({
+                "success": False,
+                "error": "Request already approved"
+            }), 400
+
+        # Update pending → approved
+        update_response = supabase.table("connections") \
+            .update({
+                "status": "approved"
+            }) \
+            .eq("id", connection_id) \
+            .eq("owner_id", owner_id) \
+            .execute()
+
+        print("UPDATE RESPONSE:", update_response.data)
+
+        return jsonify({
+            "success": True,
+            "message": "Request approved successfully"
+        }), 200
+
+    except Exception as e:
+
+        print("APPROVE REQUEST ERROR:", str(e))
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 # ============================================================
 # RUN APP
 # ============================================================
