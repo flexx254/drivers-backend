@@ -2511,26 +2511,44 @@ def approve_request():
             "error": str(e)
         }), 500
 
+
 @app.route("/connect-driver", methods=["POST"])
 @jwt_required()
 def connect_driver():
 
     try:
 
+        # =========================
+        # GET OWNER EMAIL FROM JWT
+        # =========================
+
         owner_email = get_jwt_identity()
 
         print("JWT EMAIL:", owner_email)
+
+        # =========================
+        # GET DRIVER ID FROM FRONTEND
+        # =========================
 
         data = request.get_json()
 
         print("REQUEST DATA:", data)
 
-        connection_id = data.get("connection_id")
+        driver_id = data.get("connection_id")
 
-        print("CONNECTION ID:", connection_id)
+        print("DRIVER ID:", driver_id)
+
+        if not driver_id:
+            return jsonify({
+                "error": "Driver id missing"
+            }), 400
+
+        # =========================
+        # FIND OWNER
+        # =========================
 
         owner_res = supabase.table("owner") \
-            .select("id") \
+            .select("id, full_name, phone_number") \
             .eq("email", owner_email) \
             .single() \
             .execute()
@@ -2543,18 +2561,32 @@ def connect_driver():
             }), 404
 
         owner_id = owner_res.data["id"]
+        owner_full_name = owner_res.data["full_name"]
+        owner_phone_number = owner_res.data["phone_number"]
 
         print("OWNER ID:", owner_id)
+
+        # =========================
+        # UPDATE CONNECTION ROW
+        # =========================
 
         response = supabase.table("connections") \
             .update({
                 "connect": "connected",
-                "owner_id": owner_id
+                "owner_id": owner_id,
+                "owner_full_name": owner_full_name,
+                "owner_phone_number": owner_phone_number
             }) \
-            .eq("id", connection_id) \
+            .eq("driver_id", driver_id) \
+            .eq("connect", "not_connected") \
             .execute()
 
         print("UPDATE RESPONSE:", response.data)
+
+        if not response.data:
+            return jsonify({
+                "error": "No matching connection found"
+            }), 404
 
         return jsonify({
             "message": "Driver connected successfully"
@@ -2567,7 +2599,6 @@ def connect_driver():
         return jsonify({
             "error": str(e)
         }), 500
-
 # ============================================================
 # RUN APP
 # ============================================================
