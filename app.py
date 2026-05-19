@@ -2518,37 +2518,27 @@ def connect_driver():
 
     try:
 
-        # =========================
-        # GET OWNER EMAIL FROM JWT
-        # =========================
-
         owner_email = get_jwt_identity()
 
         print("JWT EMAIL:", owner_email)
-
-        # =========================
-        # GET DRIVER ID FROM FRONTEND
-        # =========================
 
         data = request.get_json()
 
         print("REQUEST DATA:", data)
 
-        driver_id = data.get("connection_id")
+        # From frontend
+        driver_full_name = data.get("full_name")
+        driver_location = data.get("location")
 
-        print("DRIVER ID:", driver_id)
-
-        if not driver_id:
-            return jsonify({
-                "error": "Driver id missing"
-            }), 400
+        print("FULL NAME:", driver_full_name)
+        print("LOCATION:", driver_location)
 
         # =========================
-        # FIND OWNER
+        # GET OWNER
         # =========================
 
         owner_res = supabase.table("owner") \
-            .select("id, full_name, phone_number") \
+            .select("id") \
             .eq("email", owner_email) \
             .single() \
             .execute()
@@ -2561,23 +2551,20 @@ def connect_driver():
             }), 404
 
         owner_id = owner_res.data["id"]
-        owner_full_name = owner_res.data["full_name"]
-        owner_phone_number = owner_res.data["phone_number"]
 
         print("OWNER ID:", owner_id)
 
         # =========================
-        # UPDATE CONNECTION ROW
+        # UPDATE CONNECTION
         # =========================
 
         response = supabase.table("connections") \
             .update({
                 "connect": "connected",
-                "owner_id": owner_id,
-                "owner_full_name": owner_full_name,
-                "owner_phone_number": owner_phone_number
+                "owner_id": owner_id
             }) \
-            .eq("driver_id", driver_id) \
+            .eq("full_name", driver_full_name) \
+            .eq("location", driver_location) \
             .eq("connect", "not_connected") \
             .execute()
 
