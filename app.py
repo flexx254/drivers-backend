@@ -2529,7 +2529,7 @@ def connect_driver():
 
         print("CONNECTION ID:", connection_id)
 
-        owner_res = supabase.table("partners") \
+        owner_res = supabase.table("owner") \
             .select("id") \
             .eq("email", owner_email) \
             .single() \
