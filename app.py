@@ -2520,18 +2520,11 @@ def connect_driver():
 
         owner_email = get_jwt_identity()
 
-        print("JWT EMAIL:", owner_email)
-
         data = request.get_json()
 
-        print("REQUEST DATA:", data)
-
-        # From frontend
         driver_full_name = data.get("full_name")
-        driver_location = data.get("location")
 
         print("FULL NAME:", driver_full_name)
-        print("LOCATION:", driver_location)
 
         # =========================
         # GET OWNER
@@ -2542,8 +2535,6 @@ def connect_driver():
             .eq("email", owner_email) \
             .single() \
             .execute()
-
-        print("OWNER RESPONSE:", owner_res.data)
 
         if not owner_res.data:
             return jsonify({
@@ -2564,7 +2555,6 @@ def connect_driver():
                 "owner_id": owner_id
             }) \
             .eq("full_name", driver_full_name) \
-            .eq("location", driver_location) \
             .eq("connect", "not_connected") \
             .execute()
 
@@ -2586,6 +2576,8 @@ def connect_driver():
         return jsonify({
             "error": str(e)
         }), 500
+        
+        
 # ============================================================
 # RUN APP
 # ============================================================
