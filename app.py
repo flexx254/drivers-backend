@@ -2520,21 +2520,23 @@ def connect_driver():
 
         owner_email = get_jwt_identity()
 
+        print("JWT EMAIL:", owner_email)
+
         data = request.get_json()
 
-        driver_full_name = data.get("full_name")
+        print("REQUEST DATA:", data)
 
-        print("FULL NAME:", driver_full_name)
+        connection_id = data.get("connection_id")
 
-        # =========================
-        # GET OWNER
-        # =========================
+        print("CONNECTION ID:", connection_id)
 
         owner_res = supabase.table("owner") \
             .select("id") \
             .eq("email", owner_email) \
             .single() \
             .execute()
+
+        print("OWNER RESPONSE:", owner_res.data)
 
         if not owner_res.data:
             return jsonify({
@@ -2545,25 +2547,15 @@ def connect_driver():
 
         print("OWNER ID:", owner_id)
 
-        # =========================
-        # UPDATE CONNECTION
-        # =========================
-
         response = supabase.table("connections") \
             .update({
                 "connect": "connected",
                 "owner_id": owner_id
             }) \
-            .eq("full_name", driver_full_name) \
-            .eq("connect", "not_connected") \
+            .eq("id", connection_id) \
             .execute()
 
         print("UPDATE RESPONSE:", response.data)
-
-        if not response.data:
-            return jsonify({
-                "error": "No matching connection found"
-            }), 404
 
         return jsonify({
             "message": "Driver connected successfully"
