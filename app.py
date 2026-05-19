@@ -2511,31 +2511,31 @@ def approve_request():
             "error": str(e)
         }), 500
 
-
 @app.route("/connect-driver", methods=["POST"])
 @jwt_required()
 def connect_driver():
 
     try:
 
-        # JWT stores email
         owner_email = get_jwt_identity()
+
+        print("JWT EMAIL:", owner_email)
 
         data = request.get_json()
 
+        print("REQUEST DATA:", data)
+
         connection_id = data.get("connection_id")
 
-        if not connection_id:
-            return jsonify({
-                "error": "connection_id is required"
-            }), 400
+        print("CONNECTION ID:", connection_id)
 
-        # Find owner using email
         owner_res = supabase.table("partners") \
             .select("id") \
             .eq("email", owner_email) \
             .single() \
             .execute()
+
+        print("OWNER RESPONSE:", owner_res.data)
 
         if not owner_res.data:
             return jsonify({
@@ -2544,7 +2544,8 @@ def connect_driver():
 
         owner_id = owner_res.data["id"]
 
-        # Update connection
+        print("OWNER ID:", owner_id)
+
         response = supabase.table("connections") \
             .update({
                 "connect": "connected",
@@ -2553,10 +2554,7 @@ def connect_driver():
             .eq("id", connection_id) \
             .execute()
 
-        if not response.data:
-            return jsonify({
-                "error": "Connection not found"
-            }), 404
+        print("UPDATE RESPONSE:", response.data)
 
         return jsonify({
             "message": "Driver connected successfully"
@@ -2564,10 +2562,10 @@ def connect_driver():
 
     except Exception as e:
 
-        print("CONNECT DRIVER ERROR:", e)
+        print("FULL ERROR:", str(e))
 
         return jsonify({
-            "error": "Server error"
+            "error": str(e)
         }), 500
 
 # ============================================================
