@@ -2172,10 +2172,10 @@ def owner_contracts():
                 work_days,
                 status,
 
-                driver_id,
-                driver_full_name,
-                driver_phone_number,
-                driver_profile_pic_url,
+                id,
+                full_name,
+                phone_number,
+                profile_pic_url,
                 location,
 
                 car_make,
