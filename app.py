@@ -2631,6 +2631,66 @@ def connect_driver():
         return jsonify({
             "error": str(e)
         }), 500
+
+
+
+@app.route("/cancel-contract", methods=["POST"])
+@jwt_required()
+def cancel_contract():
+
+    try:
+
+        driver_id = get_jwt_identity()
+
+        data = request.get_json()
+
+        connection_id = data.get("connection_id")
+
+        if not connection_id:
+            return jsonify({
+                "success": False,
+                "error": "connection_id is required"
+            }), 400
+
+        # Verify contract belongs to this driver
+        existing = supabase.table("connections") \
+            .select("*") \
+            .eq("id", connection_id) \
+            .eq("driver_id", driver_id) \
+            .single() \
+            .execute()
+
+        if not existing.data:
+            return jsonify({
+                "success": False,
+                "error": "Contract not found"
+            }), 404
+
+        # Cancel / reset contract
+        supabase.table("connections") \
+            .update({
+                "contract_amount": None,
+                "work_days": None,
+                "contract_status": "inactive",
+                "contract_started_at": None,
+                "updated_at": datetime.utcnow().isoformat()
+            }) \
+            .eq("id", connection_id) \
+            .execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Contract cancelled successfully"
+        }), 200
+
+    except Exception as e:
+
+        print("CANCEL CONTRACT ERROR:", str(e))
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
         
         
 # ============================================================
