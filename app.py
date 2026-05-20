@@ -2172,7 +2172,6 @@ def owner_contracts():
                 work_days,
                 status,
 
-                id,
                 full_name,
                 phone_number,
                 profile_pic_url,
@@ -2186,7 +2185,33 @@ def owner_contracts():
             .eq("contract_status", "active") \
             .execute()
 
-        return jsonify(response.data), 200
+        contracts = []
+
+        for row in response.data:
+
+            contracts.append({
+
+                "id": row["id"],
+
+                "contract_status": row.get("contract_status"),
+                "contract_amount": row.get("contract_amount"),
+                "work_days": row.get("work_days"),
+                "status": row.get("status"),
+
+                # DRIVER DETAILS
+                "driver_full_name": row.get("full_name"),
+                "driver_phone_number": row.get("phone_number"),
+                "driver_profile_pic_url": row.get("profile_pic_url"),
+                "location": row.get("location"),
+
+                # CAR DETAILS
+                "car_make": row.get("car_make"),
+                "car_model": row.get("car_model"),
+                "car_image_url": row.get("car_image_url")
+
+            })
+
+        return jsonify(contracts), 200
 
     except Exception as e:
 
@@ -2195,7 +2220,6 @@ def owner_contracts():
         return jsonify({
             "error": str(e)
         }), 500
-
 
 @app.route("/set-contract", methods=["POST"])
 @jwt_required()
