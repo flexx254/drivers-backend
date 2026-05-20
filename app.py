@@ -2161,34 +2161,97 @@ def owner_contracts():
 
 
 @app.route("/set-contract", methods=["POST"])
+@jwt_required()
 def set_contract():
+
     try:
-        user = get_current_user()
-        owner_id = user["id"]
+
+        owner_email = get_jwt_identity()
+
+        print("OWNER EMAIL:", owner_email)
 
         data = request.get_json()
+
+        print("REQUEST DATA:", data)
 
         driver_id = data.get("driver_id")
         daily_amount = data.get("daily_amount")
         work_days = data.get("work_days")
 
-        if not driver_id or not daily_amount:
-            return jsonify({"error": "Missing fields"}), 400
+        # =========================
+        # VALIDATION
+        # =========================
 
-        supabase.table("contracts").insert({
-            "owner_id": owner_id,
-            "driver_id": driver_id,
-            "daily_amount": daily_amount,
-            "work_days": work_days,
-            "status": "pending",  # driver must accept
-            "created_at": datetime.utcnow().isoformat()
-        }).execute()
+        if not driver_id:
+            return jsonify({
+                "error": "Driver ID required"
+            }), 400
 
-        return jsonify({"message": "Contract created"}), 200
+        if not daily_amount:
+            return jsonify({
+                "error": "Daily amount required"
+            }), 400
+
+        if not work_days:
+            return jsonify({
+                "error": "Work days required"
+            }), 400
+
+        # =========================
+        # GET OWNER
+        # =========================
+
+        owner_res = supabase.table("owner") \
+            .select("id") \
+            .eq("email", owner_email) \
+            .single() \
+            .execute()
+
+        print("OWNER RESPONSE:", owner_res.data)
+
+        if not owner_res.data:
+            return jsonify({
+                "error": "Owner not found"
+            }), 404
+
+        owner_id = owner_res.data["id"]
+
+        print("OWNER ID:", owner_id)
+
+        # =========================
+        # UPDATE CONTRACT
+        # =========================
+
+        response = supabase.table("connections") \
+            .update({
+                "contract_amount": daily_amount,
+                "work_days": work_days,
+                "contract_status": "active",
+                "contract_started_at": datetime.utcnow().isoformat()
+            }) \
+            .eq("driver_id", driver_id) \
+            .eq("owner_id", owner_id) \
+            .eq("connect", "connected") \
+            .execute()
+
+        print("CONTRACT RESPONSE:", response.data)
+
+        if not response.data:
+            return jsonify({
+                "error": "No connected driver found"
+            }), 404
+
+        return jsonify({
+            "message": "Contract started successfully"
+        }), 200
 
     except Exception as e:
-        return jsonify({"error": "Failed to create contract"}), 500
 
+        print("FULL ERROR:", str(e))
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 
