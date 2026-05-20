@@ -2141,23 +2141,60 @@ def wake_render():
 
 
 @app.route("/owner-contracts", methods=["GET"])
+@jwt_required()
 def owner_contracts():
-    try:
-        user = get_current_user()  # from JWT
-        owner_id = user["id"]
 
-        res = supabase.table("contracts") \
-            .select("*") \
-            .eq("owner_id", owner_id) \
-            .eq("status", "active") \
+    try:
+
+        # JWT stores email
+        email = get_jwt_identity()
+
+        # FIND OWNER
+        owner_response = supabase.table("owners") \
+            .select("id") \
+            .eq("email", email) \
+            .single() \
             .execute()
 
-        return jsonify(res.data), 200
+        if not owner_response.data:
+            return jsonify({
+                "error": "Owner not found"
+            }), 404
+
+        owner_id = owner_response.data["id"]
+
+        # LOAD ACTIVE CONTRACTS
+        response = supabase.table("connections") \
+            .select("""
+                id,
+                contract_status,
+                contract_amount,
+                work_days,
+                status,
+
+                driver_id,
+                driver_full_name,
+                driver_phone_number,
+                driver_profile_pic_url,
+                location,
+
+                car_make,
+                car_model,
+                car_image_url
+            """) \
+            .eq("owner_id", owner_id) \
+            .eq("contract_status", "active") \
+            .execute()
+
+        return jsonify(response.data), 200
 
     except Exception as e:
-        return jsonify({"error": "Failed to load contracts"}), 500
 
+        print("OWNER CONTRACTS ERROR:", str(e))
 
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 @app.route("/set-contract", methods=["POST"])
