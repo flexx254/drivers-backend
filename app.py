@@ -2399,7 +2399,7 @@ def my_request_status():
                 car_image_url,
                 contract_status,
                 contract_amount,
-                working_days
+                work_days
             """) \
             .eq("driver_id", driver_id) \
             .limit(1) \
