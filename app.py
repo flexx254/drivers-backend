@@ -2390,12 +2390,16 @@ def my_request_status():
         # Now query connections properly
         response = supabase.table("connections") \
             .select("""
+                id,
                 status,
                 owner_full_name,
                 owner_phone_number,
                 car_make,
                 car_model,
-                car_image_url
+                car_image_url,
+                contract_status,
+                contract_amount,
+                working_days
             """) \
             .eq("driver_id", driver_id) \
             .limit(1) \
