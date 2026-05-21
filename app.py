@@ -2140,15 +2140,12 @@ def wake_render():
     })
 
 
-
-                
 @app.route("/owner-contracts", methods=["GET"])
 @jwt_required()
 def owner_contracts():
 
     try:
 
-        # JWT stores owner email
         email = get_jwt_identity()
 
         # FIND OWNER
@@ -2165,26 +2162,19 @@ def owner_contracts():
 
         owner_id = owner_response.data["id"]
 
-        # LOAD CONTRACTS
+        # LOAD ACTIVE CONTRACTS
         response = supabase.table("connections") \
             .select("""
                 id,
-                contract_status,
-                contract_amount,
-                work_days,
-                status,
-
                 full_name,
                 phone_number,
                 profile_pic_url,
                 location,
-
-                car_make,
-                car_model,
-                car_image_url
+                contract_amount,
+                work_days
             """) \
             .eq("owner_id", owner_id) \
-            .in_("contract_status", ["pending", "active"]) \
+            .eq("contract_status", "active") \
             .execute()
 
         contracts = []
@@ -2195,22 +2185,15 @@ def owner_contracts():
 
                 "id": row.get("id"),
 
-                # CONTRACT DETAILS
-                "contract_status": row.get("contract_status"),
-                "contract_amount": row.get("contract_amount"),
-                "work_days": row.get("work_days"),
-                "status": row.get("status"),
-
                 # DRIVER DETAILS
                 "driver_full_name": row.get("full_name"),
                 "driver_phone_number": row.get("phone_number"),
                 "driver_profile_pic_url": row.get("profile_pic_url"),
                 "location": row.get("location"),
 
-                # CAR DETAILS
-                "car_make": row.get("car_make"),
-                "car_model": row.get("car_model"),
-                "car_image_url": row.get("car_image_url")
+                # CONTRACT DETAILS
+                "contract_amount": row.get("contract_amount"),
+                "work_days": row.get("work_days")
 
             })
 
@@ -2223,6 +2206,12 @@ def owner_contracts():
         return jsonify({
             "error": str(e)
         }), 500
+
+
+
+
+        
+
 
 @app.route("/set-contract", methods=["POST"])
 @jwt_required()
