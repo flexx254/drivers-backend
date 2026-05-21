@@ -2140,13 +2140,15 @@ def wake_render():
     })
 
 
+
+                
 @app.route("/owner-contracts", methods=["GET"])
 @jwt_required()
 def owner_contracts():
 
     try:
 
-        # JWT stores email
+        # JWT stores owner email
         email = get_jwt_identity()
 
         # FIND OWNER
@@ -2163,7 +2165,7 @@ def owner_contracts():
 
         owner_id = owner_response.data["id"]
 
-        # LOAD ACTIVE CONTRACTS
+        # LOAD CONTRACTS
         response = supabase.table("connections") \
             .select("""
                 id,
@@ -2182,7 +2184,7 @@ def owner_contracts():
                 car_image_url
             """) \
             .eq("owner_id", owner_id) \
-            .eq("contract_status", "active") \
+            .in_("contract_status", ["pending", "active"]) \
             .execute()
 
         contracts = []
@@ -2191,8 +2193,9 @@ def owner_contracts():
 
             contracts.append({
 
-                "id": row["id"],
+                "id": row.get("id"),
 
+                # CONTRACT DETAILS
                 "contract_status": row.get("contract_status"),
                 "contract_amount": row.get("contract_amount"),
                 "work_days": row.get("work_days"),
