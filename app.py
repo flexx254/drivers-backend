@@ -2213,6 +2213,8 @@ def owner_contracts():
         
 
 
+
+
 @app.route("/set-contract", methods=["POST"])
 @jwt_required()
 def set_contract():
@@ -2227,7 +2229,9 @@ def set_contract():
 
         print("REQUEST DATA:", data)
 
-        driver_id = data.get("driver_id")
+        # THIS IS ACTUALLY CONNECTION ID
+        connection_id = data.get("driver_id")
+
         daily_amount = data.get("daily_amount")
         work_days = data.get("work_days")
 
@@ -2235,9 +2239,9 @@ def set_contract():
         # VALIDATION
         # =========================
 
-        if not driver_id:
+        if not connection_id:
             return jsonify({
-                "error": "Driver ID required"
+                "error": "Connection ID required"
             }), 400
 
         if not daily_amount:
@@ -2282,7 +2286,7 @@ def set_contract():
                 "contract_status": "active",
                 "contract_started_at": datetime.utcnow().isoformat()
             }) \
-            .eq("driver_id", driver_id) \
+            .eq("id", connection_id) \
             .eq("owner_id", owner_id) \
             .eq("connect", "connected") \
             .execute()
