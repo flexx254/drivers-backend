@@ -2149,7 +2149,7 @@ def owner_contracts():
         email = get_jwt_identity()
 
         # FIND OWNER
-        owner_response = supabase.table("owners") \
+        owner_response = supabase.table("owner") \
             .select("id") \
             .eq("email", email) \
             .single() \
