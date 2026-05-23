@@ -2318,6 +2318,7 @@ def set_contract():
                 "contract_amount": daily_amount,
                 "work_days": work_days,
                 "contract_status": "active",
+                "status": "approved",
                 "contract_started_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat()
             }) \
