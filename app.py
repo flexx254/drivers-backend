@@ -2214,35 +2214,40 @@ def owner_contracts():
 
 
 
-
 @app.route("/set-contract", methods=["POST"])
 @jwt_required()
 def set_contract():
 
     try:
 
-        # =========================
-        # GET LOGGED IN OWNER
-        # =========================
+        # =====================================
+        # GET LOGGED IN OWNER EMAIL
+        # =====================================
 
         owner_email = get_jwt_identity()
 
         print("OWNER EMAIL:", owner_email)
 
+        # =====================================
+        # GET FRONTEND DATA
+        # =====================================
+
         data = request.get_json()
 
         print("REQUEST DATA:", data)
 
-        # FROM FRONTEND:
-        # driver_id: driver.id
+        # driver.id from frontend
+        # driver.id = dere.id
 
         driver_id = data.get("driver_id")
+
         daily_amount = data.get("daily_amount")
+
         work_days = data.get("work_days")
 
-        # =========================
+        # =====================================
         # VALIDATION
-        # =========================
+        # =====================================
 
         if not driver_id:
             return jsonify({
@@ -2259,9 +2264,9 @@ def set_contract():
                 "error": "Work days required"
             }), 400
 
-        # =========================
-        # FIND OWNER
-        # =========================
+        # =====================================
+        # GET OWNER ID
+        # =====================================
 
         owner_res = supabase.table("owner") \
             .select("id") \
@@ -2280,15 +2285,20 @@ def set_contract():
 
         print("OWNER ID:", owner_id)
 
-        # =========================
+        # =====================================
         # FIND MATCHING CONNECTION
-        # =========================
+        # =====================================
+
+        # IMPORTANT:
+        # frontend driver_id = dere.id
+        #
+        # compare with:
+        # connections.driver_id
 
         connection_res = supabase.table("connections") \
             .select("*") \
             .eq("driver_id", driver_id) \
             .eq("owner_id", owner_id) \
-            .eq("connect", "connected") \
             .single() \
             .execute()
 
@@ -2296,12 +2306,12 @@ def set_contract():
 
         if not connection_res.data:
             return jsonify({
-                "error": "Connected driver not found"
+                "error": "Matching connection not found"
             }), 404
 
-        # =========================
-        # ACTIVATE CONTRACT
-        # =========================
+        # =====================================
+        # UPDATE CONTRACT
+        # =====================================
 
         update_res = supabase.table("connections") \
             .update({
@@ -2313,7 +2323,6 @@ def set_contract():
             }) \
             .eq("driver_id", driver_id) \
             .eq("owner_id", owner_id) \
-            .eq("connect", "connected") \
             .execute()
 
         print("UPDATE RESPONSE:", update_res.data)
