@@ -2795,7 +2795,153 @@ def cancel_contract():
             "error": str(e)
         }), 500
         
-        
+
+
+
+
+@app.route("/create-remittance-day", methods=["POST"])
+@jwt_required()
+def create_remittance_day():
+
+    try:
+
+        # =========================================
+        # LOGGED IN OWNER
+        # =========================================
+
+        owner_email = get_jwt_identity()
+
+        # =========================================
+        # GET OWNER ID
+        # =========================================
+
+        owner_res = supabase.table("owner") \
+            .select("id") \
+            .eq("email", owner_email) \
+            .single() \
+            .execute()
+
+        if not owner_res.data:
+            return jsonify({
+                "error": "Owner not found"
+            }), 404
+
+        owner_id = owner_res.data["id"]
+
+        # =========================================
+        # GET FRONTEND DATA
+        # =========================================
+
+        data = request.get_json()
+
+        connection_id = data.get("connection_id")
+
+        if not connection_id:
+            return jsonify({
+                "error": "Connection ID required"
+            }), 400
+
+        # =========================================
+        # FIND CONNECTION
+        # =========================================
+
+        connection_res = supabase.table("connections") \
+            .select("*") \
+            .eq("id", connection_id) \
+            .eq("owner_id", owner_id) \
+            .eq("status", "approved") \
+            .eq("contract_status", "active") \
+            .single() \
+            .execute()
+
+        if not connection_res.data:
+            return jsonify({
+                "error": "Approved active contract not found"
+            }), 404
+
+        connection = connection_res.data
+
+        # =========================================
+        # GET VALUES
+        # =========================================
+
+        driver_id = connection["driver_id"]
+
+        contract_amount = float(
+            connection["contract_amount"] or 0
+        )
+
+        today = date.today()
+
+        day_name = today.strftime("%A")
+
+        week_number = today.isocalendar()[1]
+
+        # =========================================
+        # PREVENT DUPLICATE DAY
+        # =========================================
+
+        existing_res = supabase.table("remittance") \
+            .select("id") \
+            .eq("connection_id", connection_id) \
+            .eq("remittance_date", str(today)) \
+            .execute()
+
+        if existing_res.data:
+
+            return jsonify({
+                "message": "Remittance day already exists"
+            }), 200
+
+        # =========================================
+        # INSERT REMITTANCE DAY
+        # =========================================
+
+        insert_res = supabase.table("remittance") \
+            .insert({
+                "connection_id": connection_id,
+                "driver_id": driver_id,
+                "owner_id": owner_id,
+
+                "remittance_date": str(today),
+                "day_name": day_name,
+                "week_number": week_number,
+
+                "expected_amount": contract_amount,
+
+                "amount_paid": 0,
+
+                "remaining_balance": contract_amount,
+
+                "cumulative_balance": contract_amount,
+
+                "payment_status": "pending",
+
+                "created_at":
+                    datetime.utcnow().isoformat(),
+
+                "updated_at":
+                    datetime.utcnow().isoformat()
+            }) \
+            .execute()
+
+        if not insert_res.data:
+            return jsonify({
+                "error": "Failed to create remittance day"
+            }), 500
+
+        return jsonify({
+            "message": "Remittance day created",
+            "data": insert_res.data
+        }), 201
+
+    except Exception as e:
+
+        print("CREATE REMITTANCE ERROR:", str(e))
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 # ============================================================
 # RUN APP
 # ============================================================
