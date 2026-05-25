@@ -2799,6 +2799,8 @@ def cancel_contract():
 
 
 
+
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
@@ -2878,70 +2880,163 @@ def create_remittance_day():
         week_number = today.isocalendar()[1]
 
         # =========================================
+        # GET FRONTEND PAYMENT VALUES
+        # =========================================
+
+        amount_paid = float(
+            data.get("amount_paid", 0)
+        )
+
+        remaining_balance = float(
+            data.get(
+                "remaining_balance",
+                contract_amount
+            )
+        )
+
+        payment_status = data.get(
+            "payment_status",
+            "pending"
+        )
+
+        payment_type = data.get(
+            "payment_type",
+            None
+        )
+
+        # =========================================
         # PREVENT DUPLICATE DAY
         # =========================================
 
         existing_res = supabase.table("remittance") \
-            .select("id") \
+            .select("*") \
             .eq("connection_id", connection_id) \
             .eq("remittance_date", str(today)) \
             .execute()
 
+        # =========================================
+        # UPDATE EXISTING DAY
+        # =========================================
+
         if existing_res.data:
 
+            existing_id = existing_res.data[0]["id"]
+
+            update_res = supabase.table("remittance") \
+                .update({
+
+                    "amount_paid": amount_paid,
+
+                    "remaining_balance":
+                        remaining_balance,
+
+                    "cumulative_balance":
+                        remaining_balance,
+
+                    "payment_status":
+                        payment_status,
+
+                    "payment_type":
+                        payment_type,
+
+                    "payment_received_at":
+                        datetime.utcnow().isoformat(),
+
+                    "updated_at":
+                        datetime.utcnow().isoformat()
+
+                }) \
+                .eq("id", existing_id) \
+                .execute()
+
             return jsonify({
-                "message": "Remittance day already exists"
+                "message":
+                    "Remittance updated successfully",
+                "data":
+                    update_res.data
             }), 200
 
         # =========================================
-        # INSERT REMITTANCE DAY
+        # INSERT NEW REMITTANCE DAY
         # =========================================
 
         insert_res = supabase.table("remittance") \
             .insert({
-                "connection_id": connection_id,
-                "driver_id": driver_id,
-                "owner_id": owner_id,
 
-                "remittance_date": str(today),
-                "day_name": day_name,
-                "week_number": week_number,
+                "connection_id":
+                    connection_id,
 
-                "expected_amount": contract_amount,
+                "driver_id":
+                    driver_id,
 
-                "amount_paid": 0,
+                "owner_id":
+                    owner_id,
 
-                "remaining_balance": contract_amount,
+                "remittance_date":
+                    str(today),
 
-                "cumulative_balance": contract_amount,
+                "day_name":
+                    day_name,
 
-                "payment_status": "pending",
+                "week_number":
+                    week_number,
+
+                "expected_amount":
+                    contract_amount,
+
+                "amount_paid":
+                    amount_paid,
+
+                "remaining_balance":
+                    remaining_balance,
+
+                "cumulative_balance":
+                    remaining_balance,
+
+                "payment_status":
+                    payment_status,
+
+                "payment_type":
+                    payment_type,
+
+                "payment_received_at":
+                    datetime.utcnow().isoformat(),
 
                 "created_at":
                     datetime.utcnow().isoformat(),
 
                 "updated_at":
                     datetime.utcnow().isoformat()
+
             }) \
             .execute()
 
         if not insert_res.data:
             return jsonify({
-                "error": "Failed to create remittance day"
+                "error":
+                    "Failed to create remittance day"
             }), 500
 
         return jsonify({
-            "message": "Remittance day created",
-            "data": insert_res.data
+            "message":
+                "Remittance day created",
+            "data":
+                insert_res.data
         }), 201
 
     except Exception as e:
 
-        print("CREATE REMITTANCE ERROR:", str(e))
+        print(
+            "CREATE REMITTANCE ERROR:",
+            str(e)
+        )
 
         return jsonify({
             "error": str(e)
         }), 500
+
+
+                
 # ============================================================
 # RUN APP
 # ============================================================
