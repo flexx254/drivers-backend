@@ -3040,7 +3040,6 @@ def create_remittance_day():
 
 
         
-                
 @app.route(
     "/contract-remittance/<int:connection_id>",
     methods=["GET"]
@@ -3051,76 +3050,47 @@ def contract_remittance(connection_id):
     try:
 
         # =========================================
-        # LOGGED IN USER
+        # LOGGED IN OWNER
         # =========================================
 
-        user_email = get_jwt_identity()
+        owner_email = get_jwt_identity()
 
         # =========================================
-        # CHECK IF OWNER
+        # GET OWNER ID
         # =========================================
 
         owner_res = supabase.table("owner") \
             .select("id") \
-            .eq("email", user_email) \
+            .eq("email", owner_email) \
+            .single() \
             .execute()
 
-        owner_id = None
-
-        if owner_res.data:
-            owner_id = owner_res.data[0]["id"]
-
-        # =========================================
-        # CHECK IF DRIVER
-        # =========================================
-
-        driver_res = supabase.table("drivers") \
-            .select("id") \
-            .eq("email", user_email) \
-            .execute()
-
-        driver_id = None
-
-        if driver_res.data:
-            driver_id = driver_res.data[0]["id"]
-
-        # =========================================
-        # USER NOT FOUND
-        # =========================================
-
-        if not owner_id and not driver_id:
+        if not owner_res.data:
 
             return jsonify({
-                "error": "User not found"
+                "error": "Owner not found"
             }), 404
 
+        owner_id = owner_res.data["id"]
+
         # =========================================
-        # VERIFY CONNECTION ACCESS
+        # VERIFY CONTRACT BELONGS TO OWNER
         # =========================================
 
-        connection_query = supabase.table(
+        connection_res = supabase.table(
             "connections"
-        ).select("id")
-
-        if owner_id:
-
-            connection_query = connection_query \
-                .eq("owner_id", owner_id)
-
-        elif driver_id:
-
-            connection_query = connection_query \
-                .eq("driver_id", driver_id)
-
-        connection_res = connection_query \
+        ) \
+            .select("id") \
             .eq("id", connection_id) \
+            .eq("owner_id", owner_id) \
             .single() \
             .execute()
 
         if not connection_res.data:
 
             return jsonify({
-                "error": "Contract not found"
+                "error":
+                "Contract not found"
             }), 404
 
         # =========================================
