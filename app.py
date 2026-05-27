@@ -3139,6 +3139,90 @@ def contract_remittance(connection_id):
         return jsonify({
             "error": str(e)
         }), 500
+
+
+@app.route(
+    "/payment-installments/<int:connection_id>",
+    methods=["GET"]
+)
+@jwt_required()
+def driver_contract_remittance(connection_id):
+
+    try:
+
+        # =========================================
+        # LOGGED IN DRIVER
+        # =========================================
+
+        driver_email = get_jwt_identity()
+
+        # =========================================
+        # GET DRIVER ID
+        # =========================================
+
+        driver_res = supabase.table("dere") \
+            .select("id") \
+            .eq("email", driver_email) \
+            .single() \
+            .execute()
+
+        if not driver_res.data:
+            return jsonify({
+                "error": "Driver not found"
+            }), 404
+
+        driver_id = driver_res.data["id"]
+
+        # =========================================
+        # VERIFY CONNECTION BELONGS TO DRIVER
+        # =========================================
+
+        connection_res = supabase.table("connections") \
+            .select("id") \
+            .eq("id", connection_id) \
+            .eq("driver_id", driver_id) \
+            .single() \
+            .execute()
+
+        if not connection_res.data:
+            return jsonify({
+                "error": "Contract not found"
+            }), 404
+
+        # =========================================
+        # FETCH REMITTANCE USING DRIVER ID CHECK
+        # =========================================
+
+        remittance_res = supabase.table("remittance") \
+            .select("""
+                id,
+                remittance_date,
+                day_name,
+                week_number,
+                expected_amount,
+                amount_paid,
+                remaining_balance,
+                cumulative_balance,
+                payment_status,
+                payment_type,
+                payment_received_at,
+                notes,
+                created_at
+            """) \
+            .eq("connection_id", connection_id) \
+            .eq("driver_id", driver_id) \
+            .order("remittance_date", desc=False) \
+            .execute()
+
+        return jsonify(remittance_res.data), 200
+
+    except Exception as e:
+
+        print("DRIVER REMITTANCE ERROR:", str(e))
+
+        return jsonify({
+            "error": str(e)
+        }), 500
         
 # ============================================================
 # RUN APP
