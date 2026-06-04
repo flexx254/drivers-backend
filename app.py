@@ -2994,7 +2994,7 @@ def create_remittance_day():
         # =========================================
 
         installments_res = supabase.table(
-            "payment_installments"
+            "remittance"
         ) \
             .select("amount_paid") \
             .eq("remittance_id", remittance_id) \
