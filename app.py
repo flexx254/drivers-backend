@@ -2798,6 +2798,9 @@ def cancel_contract():
 
 
 
+
+
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
@@ -2957,59 +2960,10 @@ def create_remittance_day():
         remittance_id = remittance["id"]
 
         # =========================================
-        # CREATE INSTALLMENT RECORD
+        # CALCULATE PAYMENT
         # =========================================
 
-        installment_insert = supabase.table(
-            "remittance"
-        ) \
-            .insert({
-
-                "remittance_id":
-                    remittance_id,
-
-                "connection_id":
-                    connection_id,
-
-                "owner_id":
-                    owner_id,
-
-                "driver_id":
-                    driver_id,
-
-                "amount_paid":
-                    amount_paid,
-
-                "payment_type":
-                    payment_type,
-
-                "created_at":
-                    datetime.utcnow().isoformat()
-
-            }) \
-            .execute()
-
-        # =========================================
-        # GET ALL INSTALLMENTS
-        # =========================================
-
-        installments_res = supabase.table(
-            "remittance"
-        ) \
-            .select("amount_paid") \
-            .eq("remittance_id", remittance_id) \
-            .execute()
-
-        installments = installments_res.data or []
-
-        total_paid = sum(
-            float(i["amount_paid"] or 0)
-            for i in installments
-        )
-
-        # =========================================
-        # CALCULATE BALANCE
-        # =========================================
+        total_paid = amount_paid
 
         remaining_balance = (
             contract_amount - total_paid
@@ -3059,6 +3013,9 @@ def create_remittance_day():
 
                 "payment_status":
                     payment_status,
+
+                "payment_type":
+                    payment_type,
 
                 "updated_at":
                     datetime.utcnow().isoformat()
@@ -3177,8 +3134,7 @@ def create_remittance_day():
 
         return jsonify({
             "error": str(e)
-        }), 500        
-                       
+        }), 500
 
 
 
