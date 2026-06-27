@@ -167,7 +167,9 @@ except Exception as e:
 
 
 
-
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 # -----------------------------
 # CLOUDINARY CONFIG (optional)
 # -----------------------------
