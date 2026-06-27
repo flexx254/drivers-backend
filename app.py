@@ -20,6 +20,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.datastructures import FileStorage
 from dotenv import load_dotenv
+from google import genai
 
 
 # supabase client (ensure package installed in your env)
