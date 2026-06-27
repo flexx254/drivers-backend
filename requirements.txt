@@ -11,3 +11,4 @@ Werkzeug
 gunicorn
 mailjet-rest
 flask-jwt-extended
+google-genai
