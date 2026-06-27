@@ -167,9 +167,12 @@ except Exception as e:
 
 
 
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY missing from environment variables")
+
+client = genai.Client(api_key=GEMINI_API_KEY)
 # -----------------------------
 # CLOUDINARY CONFIG (optional)
 # -----------------------------
