@@ -2815,6 +2815,14 @@ def cancel_contract():
 
                            
 
+        
+
+            
+                    
+        
+
+
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
@@ -2882,7 +2890,7 @@ def create_remittance_day():
             .select("*") \
             .eq("connection_id", connection_id) \
             .neq("payment_status", "paid") \
-            .order("remittance_date", asc=True) \
+            .order("remittance_date", desc=False) \
             .limit(1) \
             .execute()
 
@@ -2920,7 +2928,6 @@ def create_remittance_day():
             else:
                 target_remittance = today_check.data[0]
 
-        # Top-level tracker details for mapping UI grid responses cleanly
         first_target_date_str = target_remittance["remittance_date"]
         first_total_paid_on_day = float(target_remittance.get("amount_paid") or 0)
         first_remaining_balance_on_day = float(target_remittance.get("remaining_balance") or contract_amount)
@@ -2939,7 +2946,6 @@ def create_remittance_day():
             
             needed_on_day = max(contract_amount - current_day_paid, 0)
             
-            # If this record day is already completely settled, cleanly skip step forward
             if needed_on_day == 0:
                 target_date = target_date + timedelta(days=1)
                 target_date_str = str(target_date)
@@ -2975,14 +2981,12 @@ def create_remittance_day():
                 
                 continue
 
-            # Deduct matching chunk size
             allocated_to_day = min(remaining_credit, needed_on_day)
             new_total_paid_target = current_day_paid + allocated_to_day
             new_remaining_balance = max(contract_amount - new_total_paid_target, 0)
             
             new_status = "pending" if new_total_paid_target == 0 else ("partial" if new_total_paid_target < contract_amount else "paid")
 
-            # Direct inline column updates supporting your schema
             supabase.table("remittance").update({
                 "amount_paid": new_total_paid_target,
                 "remaining_balance": new_remaining_balance,
@@ -2993,7 +2997,6 @@ def create_remittance_day():
                 "updated_at": current_now_iso
             }).eq("id", target_remittance_id).execute()
 
-            # Record internal positions for matching frontend tracking variables
             if is_first_iteration:
                 first_total_paid_on_day = new_total_paid_target
                 first_remaining_balance_on_day = new_remaining_balance
@@ -3002,10 +3005,8 @@ def create_remittance_day():
             else:
                 total_rolled_over += allocated_to_day
 
-            # Reduce remaining credit tracker pool
             remaining_credit -= allocated_to_day
 
-            # Advance context pointer step ahead if money still remains
             if remaining_credit > 0:
                 target_date = target_date + timedelta(days=1)
                 target_date_str = str(target_date)
@@ -3054,9 +3055,6 @@ def create_remittance_day():
     except Exception as e:
         print("CREATE REMITTANCE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
-    
-        
-
 
         
 @app.route(
