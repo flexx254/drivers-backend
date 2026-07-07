@@ -2808,16 +2808,20 @@ def cancel_contract():
 
 
 
+
+        
+
+        
+
+                           
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
-
     try:
-
         # =========================================
-        # LOGGED IN OWNER
+        # 1. LOGGED IN OWNER VALIDATION
         # =========================================
-
         owner_email = get_jwt_identity()
 
         owner_res = supabase.table("owner") \
@@ -2827,43 +2831,31 @@ def create_remittance_day():
             .execute()
 
         if not owner_res.data:
-            return jsonify({
-                "error": "Owner not found"
-            }), 404
+            return jsonify({"error": "Owner not found"}), 404
 
         owner_id = owner_res.data["id"]
 
         # =========================================
-        # FRONTEND DATA
+        # 2. FRONTEND PAYLOAD PARSING
         # =========================================
-
-        data = request.get_json()
-
+        data = request.get_json() or {}
         connection_id = data.get("connection_id")
+        payment_type = data.get("payment_type", "cash")
 
-        amount_paid = float(
-            data.get("amount_paid", 0)
-        )
-
-        payment_type = data.get(
-            "payment_type",
-            "cash"
-        )
+        try:
+            amount_to_apply = float(data.get("amount_paid", 0))
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid format for amount_paid"}), 400
 
         if not connection_id:
-            return jsonify({
-                "error": "Connection ID required"
-            }), 400
+            return jsonify({"error": "Connection ID required"}), 400
 
-        if amount_paid <= 0:
-            return jsonify({
-                "error": "Amount must be greater than 0"
-            }), 400
+        if amount_to_apply <= 0:
+            return jsonify({"error": "Amount must be greater than 0"}), 400
 
         # =========================================
-        # VALIDATE CONNECTION
+        # 3. VERIFY ACTIVE CONTRACT CONNECTION
         # =========================================
-
         connection_res = supabase.table("connections") \
             .select("*") \
             .eq("id", connection_id) \
@@ -2874,276 +2866,199 @@ def create_remittance_day():
             .execute()
 
         if not connection_res.data:
-            return jsonify({
-                "error": "Active contract not found"
-            }), 404
+            return jsonify({"error": "Active contract not found"}), 404
 
         connection = connection_res.data
-
         driver_id = connection["driver_id"]
-
-        contract_amount = float(
-            connection["contract_amount"] or 0
-        )
+        contract_amount = float(connection["contract_amount"] or 0)
 
         today = date.today()
-
-        day_name = today.strftime("%A")
-
-        week_number = today.isocalendar()[1]
+        current_now_iso = datetime.now(timezone.utc).isoformat()
 
         # =========================================
-        # FIND OR CREATE REMITTANCE DAY
+        # 4. TARGET THE OLDEST UNPAID RECORD OR TODAY
         # =========================================
-
-        remittance_res = supabase.table("remittance") \
+        # Pull the oldest unremitted day chronologically matching your ledger setup
+        unpaid_res = supabase.table("remittance") \
             .select("*") \
             .eq("connection_id", connection_id) \
-            .eq("remittance_date", str(today)) \
+            .neq("payment_status", "paid") \
+            .order("remittance_date", asc=True) \
+            .limit(1) \
             .execute()
 
-        # =========================================
-        # CREATE DAY IF MISSING
-        # =========================================
-
-        if not remittance_res.data:
-
-            insert_day = supabase.table("remittance") \
-                .insert({
-
-                    "connection_id":
-                        connection_id,
-
-                    "driver_id":
-                        driver_id,
-
-                    "owner_id":
-                        owner_id,
-
-                    "remittance_date":
-                        str(today),
-
-                    "day_name":
-                        day_name,
-
-                    "week_number":
-                        week_number,
-
-                    "expected_amount":
-                        contract_amount,
-
-                    "amount_paid":
-                        0,
-
-                    "remaining_balance":
-                        contract_amount,
-
-                    "cumulative_balance":
-                        contract_amount,
-
-                    "payment_status":
-                        "pending",
-
-                    "created_at":
-                        datetime.utcnow().isoformat(),
-
-                    "updated_at":
-                        datetime.utcnow().isoformat()
-
-                }) \
-                .execute()
-
-            if not insert_day.data:
-                return jsonify({
-                    "error": "Failed to create day"
-                }), 500
-
-            remittance = insert_day.data[0]
-
+        if unpaid_res.data:
+            target_remittance = unpaid_res.data[0]
+            target_date_str = target_remittance["remittance_date"]
+            target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
         else:
-
-            remittance = remittance_res.data[0]
-
-        remittance_id = remittance["id"]
-
-        # =========================================
-        # CALCULATE PAYMENT
-        # =========================================
-
-        total_paid = amount_paid
-
-        remaining_balance = (
-            contract_amount - total_paid
-        )
-
-        overpayment = 0
-
-        if remaining_balance < 0:
-
-            overpayment = abs(
-                remaining_balance
-            )
-
-            remaining_balance = 0
-
-        # =========================================
-        # DETERMINE STATUS
-        # =========================================
-
-        if total_paid == 0:
-
-            payment_status = "pending"
-
-        elif total_paid < contract_amount:
-
-            payment_status = "partial"
-
-        else:
-
-            payment_status = "paid"
-
-        # =========================================
-        # UPDATE REMITTANCE SUMMARY
-        # =========================================
-
-        update_res = supabase.table("remittance") \
-            .update({
-
-                "amount_paid":
-                    total_paid,
-
-                "remaining_balance":
-                    remaining_balance,
-
-                "cumulative_balance":
-                    remaining_balance,
-
-                "payment_status":
-                    payment_status,
-
-                "payment_type":
-                    payment_type,
-
-                "updated_at":
-                    datetime.utcnow().isoformat()
-
-            }) \
-            .eq("id", remittance_id) \
-            .execute()
-
-        # =========================================
-        # HANDLE OVERPAYMENT
-        # =========================================
-
-        if overpayment > 0:
-
-            next_day = today + timedelta(days=1)
-
-            next_day_name = next_day.strftime("%A")
-
-            next_week = next_day.isocalendar()[1]
-
-            next_res = supabase.table("remittance") \
+            # Everything prior is paid or empty, target today's date
+            target_date = today
+            target_date_str = str(today)
+            
+            today_check = supabase.table("remittance") \
                 .select("*") \
                 .eq("connection_id", connection_id) \
-                .eq(
-                    "remittance_date",
-                    str(next_day)
-                ) \
+                .eq("remittance_date", target_date_str) \
                 .execute()
+                
+            if not today_check.data:
+                insert_day = supabase.table("remittance").insert({
+                    "connection_id": connection_id,
+                    "driver_id": driver_id,
+                    "owner_id": owner_id,
+                    "remittance_date": target_date_str,
+                    "day_name": target_date.strftime("%A"),
+                    "week_number": target_date.isocalendar()[1],
+                    "expected_amount": contract_amount,
+                    "amount_paid": 0,
+                    "remaining_balance": contract_amount,
+                    "cumulative_balance": contract_amount,
+                    "payment_status": "pending",
+                    "created_at": current_now_iso,
+                    "updated_at": current_now_iso
+                }).execute()
+                target_remittance = insert_day.data[0]
+            else:
+                target_remittance = today_check.data[0]
 
-            if not next_res.data:
+        # Top-level tracker details for mapping UI grid responses cleanly
+        first_target_date_str = target_remittance["remittance_date"]
+        first_total_paid_on_day = float(target_remittance.get("amount_paid") or 0)
+        first_remaining_balance_on_day = float(target_remittance.get("remaining_balance") or contract_amount)
+        first_payment_status = target_remittance.get("payment_status", "pending")
+        
+        is_first_iteration = True
+        total_rolled_over = 0
+        remaining_credit = amount_to_apply
 
-                supabase.table("remittance") \
-                    .insert({
+        # =========================================
+        # 5. WATERFALL ALLOCATION LOOP (SINGLE TABLE)
+        # =========================================
+        while remaining_credit > 0:
+            target_remittance_id = target_remittance["id"]
+            current_day_paid = float(target_remittance.get("amount_paid") or 0)
+            
+            # Figure out exactly how much this record row needs to hit max expected limits
+            needed_on_day = max(contract_amount - current_day_paid, 0)
+            
+            # If this record day is already completely settled, cleanly skip step forward
+            if needed_on_day == 0:
+                target_date = target_date + timedelta(days=1)
+                target_date_str = str(target_date)
 
-                        "connection_id":
-                            connection_id,
-
-                        "driver_id":
-                            driver_id,
-
-                        "owner_id":
-                            owner_id,
-
-                        "remittance_date":
-                            str(next_day),
-
-                        "day_name":
-                            next_day_name,
-
-                        "week_number":
-                            next_week,
-
-                        "expected_amount":
-                            contract_amount,
-
-                        "amount_paid":
-                            overpayment,
-
-                        "remaining_balance":
-                            max(
-                                contract_amount - overpayment,
-                                0
-                            ),
-
-                        "cumulative_balance":
-                            max(
-                                contract_amount - overpayment,
-                                0
-                            ),
-
-                        "payment_status":
-                            "partial" if overpayment < contract_amount else "paid",
-
-                        "created_at":
-                            datetime.utcnow().isoformat(),
-
-                        "updated_at":
-                            datetime.utcnow().isoformat()
-
-                    }) \
+                next_res = supabase.table("remittance") \
+                    .select("*") \
+                    .eq("connection_id", connection_id) \
+                    .eq("remittance_date", target_date_str) \
                     .execute()
 
-        # =========================================
-        # RESPONSE
-        # =========================================
+                if not next_res.data:
+                    insert_day = supabase.table("remittance").insert({
+                        "connection_id": connection_id,
+                        "driver_id": driver_id,
+                        "owner_id": owner_id,
+                        "remittance_date": target_date_str,
+                        "day_name": target_date.strftime("%A"),
+                        "week_number": target_date.isocalendar()[1],
+                        "expected_amount": contract_amount,
+                        "amount_paid": 0,
+                        "remaining_balance": contract_amount,
+                        "cumulative_balance": contract_amount,
+                        "payment_status": "pending",
+                        "created_at": current_now_iso,
+                        "updated_at": current_now_iso
+                    }).execute()
+                    target_remittance = insert_day.data[0]
+                else:
+                    target_remittance = next_res.data[0]
+                
+                if is_first_iteration:
+                    is_first_iteration = False
+                
+                continue
 
+            # Deduct matching chunk size
+            allocated_to_day = min(remaining_credit, needed_on_day)
+            new_total_paid_target = current_day_paid + allocated_to_day
+            new_remaining_balance = max(contract_amount - new_total_paid_target, 0)
+            
+            new_status = "pending" if new_total_paid_target == 0 else ("partial" if new_total_paid_target < contract_amount else "paid")
+
+            # Direct inline column updates supporting your schema
+            supabase.table("remittance").update({
+                "amount_paid": new_total_paid_target,
+                "remaining_balance": new_remaining_balance,
+                "cumulative_balance": new_remaining_balance,
+                "payment_status": new_status,
+                "payment_type": payment_type,
+                "payment_received_at": current_now_iso,
+                "updated_at": current_now_iso
+            }).eq("id", target_remittance_id).execute()
+
+            # Record internal positions for matching frontend tracking variables
+            if is_first_iteration:
+                first_total_paid_on_day = new_total_paid_target
+                first_remaining_balance_on_day = new_remaining_balance
+                first_payment_status = new_status
+                is_first_iteration = False
+            else:
+                total_rolled_over += allocated_to_day
+
+            # Reduce remaining credit tracker pool
+            remaining_credit -= allocated_to_day
+
+            # Advance context pointer step ahead if money still remains
+            if remaining_credit > 0:
+                target_date = target_date + timedelta(days=1)
+                target_date_str = str(target_date)
+
+                next_res = supabase.table("remittance") \
+                    .select("*") \
+                    .eq("connection_id", connection_id) \
+                    .eq("remittance_date", target_date_str) \
+                    .execute()
+
+                if not next_res.data:
+                    insert_day = supabase.table("remittance").insert({
+                        "connection_id": connection_id,
+                        "driver_id": driver_id,
+                        "owner_id": owner_id,
+                        "remittance_date": target_date_str,
+                        "day_name": target_date.strftime("%A"),
+                        "week_number": target_date.isocalendar()[1],
+                        "expected_amount": contract_amount,
+                        "amount_paid": 0,
+                        "remaining_balance": contract_amount,
+                        "cumulative_balance": contract_amount,
+                        "payment_status": "pending",
+                        "created_at": current_now_iso,
+                        "updated_at": current_now_iso
+                    }).execute()
+                    target_remittance = insert_day.data[0]
+                else:
+                    target_remittance = next_res.data[0]
+
+        # =========================================
+        # 6. OUTPUT SUMMARY STRUCTURE MATCHING UI EXPECTATIONS
+        # =========================================
         return jsonify({
-
-            "message":
-                "Payment processed successfully",
-
+            "message": "Payment processed successfully",
+            "applied_to_date": first_target_date_str,
             "summary": {
-
-                "total_paid":
-                    total_paid,
-
-                "remaining_balance":
-                    remaining_balance,
-
-                "payment_status":
-                    payment_status,
-
-                "overpayment":
-                    overpayment
-
+                "total_paid_on_day": first_total_paid_on_day,
+                "remaining_balance_on_day": first_remaining_balance_on_day,
+                "payment_status": first_payment_status,
+                "cumulative_balance": first_remaining_balance_on_day,
+                "rolled_over_credit": total_rolled_over
             }
-
         }), 200
 
     except Exception as e:
-
-        print(
-            "CREATE REMITTANCE ERROR:",
-            str(e)
-        )
-
-        return jsonify({
-            "error": str(e)
-        }), 500
-
-
+        print("CREATE REMITTANCE ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
+        
+        
 
 
         
