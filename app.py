@@ -2878,7 +2878,6 @@ def create_remittance_day():
         # =========================================
         # 4. TARGET THE OLDEST UNPAID RECORD OR TODAY
         # =========================================
-        # Pull the oldest unremitted day chronologically matching your ledger setup
         unpaid_res = supabase.table("remittance") \
             .select("*") \
             .eq("connection_id", connection_id) \
@@ -2892,7 +2891,6 @@ def create_remittance_day():
             target_date_str = target_remittance["remittance_date"]
             target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
         else:
-            # Everything prior is paid or empty, target today's date
             target_date = today
             target_date_str = str(today)
             
@@ -2939,7 +2937,6 @@ def create_remittance_day():
             target_remittance_id = target_remittance["id"]
             current_day_paid = float(target_remittance.get("amount_paid") or 0)
             
-            # Figure out exactly how much this record row needs to hit max expected limits
             needed_on_day = max(contract_amount - current_day_paid, 0)
             
             # If this record day is already completely settled, cleanly skip step forward
@@ -3040,7 +3037,7 @@ def create_remittance_day():
                     target_remittance = next_res.data[0]
 
         # =========================================
-        # 6. OUTPUT SUMMARY STRUCTURE MATCHING UI EXPECTATIONS
+        # 6. OUTPUT SUMMARY STRUCTURE
         # =========================================
         return jsonify({
             "message": "Payment processed successfully",
@@ -3057,7 +3054,7 @@ def create_remittance_day():
     except Exception as e:
         print("CREATE REMITTANCE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
-        
+    
         
 
 
