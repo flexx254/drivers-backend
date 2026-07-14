@@ -2824,6 +2824,9 @@ def cancel_contract():
         
 
 
+
+
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
@@ -2892,14 +2895,14 @@ def create_remittance_day():
             }), 404
 
         # =========================================
-        # FIND OLDEST UNPAID REMITTANCE
+        # FIND OLDEST REMITTANCE WITH BALANCE OWING
         # =========================================
 
         remittance_res = (
             supabase.table("remittance")
             .select("id")
             .eq("connection_id", connection_id)
-            .in_("payment_status", ["pending", "partial"])
+            .gt("remaining_balance", 0)
             .order("remittance_date")
             .limit(1)
             .execute()
@@ -2907,7 +2910,7 @@ def create_remittance_day():
 
         if not remittance_res.data:
             return jsonify({
-                "error": "No pending remittance found"
+                "error": "No outstanding remittance found"
             }), 404
 
         remittance_id = remittance_res.data[0]["id"]
@@ -2944,110 +2947,8 @@ def create_remittance_day():
 
         return jsonify({
             "error": str(e)
-        }), 500
-                
-
-        
-@app.route(
-    "/contract-remittance/<int:connection_id>",
-    methods=["GET"]
-)
-@jwt_required()
-def contract_remittance(connection_id):
-
-    try:
-
-        # =========================================
-        # LOGGED IN OWNER
-        # =========================================
-
-        owner_email = get_jwt_identity()
-
-        # =========================================
-        # GET OWNER ID
-        # =========================================
-
-        owner_res = supabase.table("owner") \
-            .select("id") \
-            .eq("email", owner_email) \
-            .single() \
-            .execute()
-
-        if not owner_res.data:
-
-            return jsonify({
-                "error": "Owner not found"
-            }), 404
-
-        owner_id = owner_res.data["id"]
-
-        # =========================================
-        # VERIFY CONTRACT BELONGS TO OWNER
-        # =========================================
-
-        connection_res = supabase.table(
-            "connections"
-        ) \
-            .select("id") \
-            .eq("id", connection_id) \
-            .eq("owner_id", owner_id) \
-            .single() \
-            .execute()
-
-        if not connection_res.data:
-
-            return jsonify({
-                "error":
-                "Contract not found"
-            }), 404
-
-        # =========================================
-        # FETCH REMITTANCE RECORDS
-        # =========================================
-
-        remittance_res = supabase.table(
-            "remittance"
-        ) \
-            .select("""
-                id,
-                remittance_date,
-                day_name,
-                week_number,
-                expected_amount,
-                amount_paid,
-                remaining_balance,
-                cumulative_balance,
-                payment_status,
-                payment_type,
-                payment_received_at,
-                notes,
-                created_at
-            """) \
-            .eq(
-                "connection_id",
-                connection_id
-            ) \
-            .order(
-                "remittance_date",
-                desc=False
-            ) \
-            .execute()
-
-        return jsonify(
-            remittance_res.data
-        ), 200
-
-    except Exception as e:
-
-        print(
-            "FETCH REMITTANCE ERROR:",
-            str(e)
-        )
-
-        return jsonify({
-            "error": str(e)
-        }), 500
-
+        }), 500    
+    
 
 @app.route(
     "/payment-installments/<int:connection_id>",
