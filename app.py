@@ -2842,7 +2842,7 @@ def create_remittance_day():
         owner_email = get_jwt_identity()
 
         owner_res = (
-            supabase.table("owners")
+            supabase.table("owner")
             .select("id")
             .eq("email", owner_email)
             .single()
