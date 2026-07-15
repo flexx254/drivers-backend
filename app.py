@@ -2827,6 +2827,8 @@ def cancel_contract():
 
 
 
+
+
 @app.route("/create-remittance-day", methods=["POST"])
 @jwt_required()
 def create_remittance_day():
@@ -2840,7 +2842,7 @@ def create_remittance_day():
         owner_email = get_jwt_identity()
 
         owner_res = (
-            supabase.table("owner")
+            supabase.table("owners")
             .select("id")
             .eq("email", owner_email)
             .single()
@@ -2855,14 +2857,13 @@ def create_remittance_day():
         owner_id = owner_res.data["id"]
 
         # =========================================
-        # FRONTEND DATA
+        # REQUEST DATA
         # =========================================
 
         data = request.get_json()
 
         connection_id = data.get("connection_id")
         amount_paid = float(data.get("amount_paid", 0))
-        payment_type = data.get("payment_type", "cash")
 
         if not connection_id:
             return jsonify({
@@ -2871,19 +2872,18 @@ def create_remittance_day():
 
         if amount_paid <= 0:
             return jsonify({
-                "error": "Amount must be greater than zero"
+                "error": "Enter a valid payment amount"
             }), 400
 
         # =========================================
-        # VALIDATE CONNECTION
+        # VERIFY ACTIVE CONTRACT BELONGS TO OWNER
         # =========================================
 
         connection_res = (
             supabase.table("connections")
-            .select("driver_id")
+            .select("id")
             .eq("id", connection_id)
             .eq("owner_id", owner_id)
-            .eq("status", "approved")
             .eq("contract_status", "active")
             .single()
             .execute()
@@ -2895,7 +2895,7 @@ def create_remittance_day():
             }), 404
 
         # =========================================
-        # FIND OLDEST REMITTANCE WITH BALANCE OWING
+        # FIND THE OLDEST REMITTANCE WITH A BALANCE
         # =========================================
 
         remittance_res = (
@@ -2903,7 +2903,8 @@ def create_remittance_day():
             .select("id")
             .eq("connection_id", connection_id)
             .gt("remaining_balance", 0)
-            .order("remittance_date")
+            .order("remittance_date", desc=False)
+            .order("id", desc=False)
             .limit(1)
             .execute()
         )
@@ -2917,15 +2918,13 @@ def create_remittance_day():
 
         # =========================================
         # RECORD PAYMENT
-        # Database trigger performs waterfall allocation
+        # SQL trigger performs the entire allocation
         # =========================================
 
         update_res = (
             supabase.table("remittance")
             .update({
                 "payment_amount": amount_paid,
-                "payment_type": payment_type,
-                "payment_received_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat()
             })
             .eq("id", remittance_id)
@@ -2947,7 +2946,7 @@ def create_remittance_day():
 
         return jsonify({
             "error": str(e)
-        }), 500    
+        }), 500
     
 
 @app.route(
