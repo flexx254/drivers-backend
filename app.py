@@ -3051,6 +3051,28 @@ def test_gemini():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@app.route("/contract-balance/<int:connection_id>", methods=["GET"])
+@jwt_required()
+def contract_balance(connection_id):
+
+    try:
+        result = supabase.rpc(
+            "get_outstanding_balance",
+            {
+                "p_connection_id": connection_id
+            }
+        ).execute()
+
+        return jsonify({
+            "outstanding_balance": result.data or 0
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
 # ============================================================
 # RUN APP
 # ============================================================
