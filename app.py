@@ -3073,6 +3073,91 @@ def contract_balance(connection_id):
         return jsonify({
             "error": str(e)
         }), 500
+
+@app.route("/generate-quotation", methods=["POST"])
+def generate_quotation():
+    try:
+        data = request.get_json()
+
+        answers = data.get("answers", [])
+
+        prompt = f"""
+You are Tanda AI, a professional software consultant.
+
+The client answered the following questions:
+
+1. Website/System Type:
+{answers[0] if len(answers) > 0 else ""}
+
+2. Business Description:
+{answers[1] if len(answers) > 1 else ""}
+
+3. Features Required:
+{answers[2] if len(answers) > 2 else ""}
+
+4. Payment Integration:
+{answers[3] if len(answers) > 3 else ""}
+
+5. Timeline:
+{answers[4] if len(answers) > 4 else ""}
+
+Based on the client's answers, generate a quotation.
+
+Return ONLY valid JSON in this exact format:
+
+{{
+  "title":"",
+  "client_name":"",
+  "services":[
+    {{
+      "name":"",
+      "description":"",
+      "price":0
+    }},
+    {{
+      "name":"",
+      "description":"",
+      "price":0
+    }},
+    {{
+      "name":"",
+      "description":"",
+      "price":0
+    }}
+  ],
+  "total":0,
+  "terms":[
+    "",
+    "",
+    "",
+    ""
+  ]
+}}
+
+Do not use markdown.
+Do not explain anything.
+Return only JSON.
+"""
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        quotation = json.loads(response.text)
+
+        return jsonify({
+            "success": True,
+            "quotation": quotation
+        })
+
+    except Exception as e:
+        logger.exception("Quotation generation failed")
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # ============================================================
 # RUN APP
 # ============================================================
