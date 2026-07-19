@@ -3074,17 +3074,17 @@ def contract_balance(connection_id):
             "error": str(e)
         }), 500
 
+
 @app.route("/generate-quotation", methods=["POST"])
 def generate_quotation():
     try:
 
         data = request.get_json() or {}
-
         answers = data.get("answers", [])
 
-        # -----------------------------
-        # Load all available services
-        # -----------------------------
+        # ----------------------------------
+        # Load pricing table
+        # ----------------------------------
         pricing = (
             supabase
             .table("pricing")
@@ -3096,30 +3096,30 @@ def generate_quotation():
 
         services = pricing.data
 
-        prompt = f"""
+        prompt = """
 You are Tanda AI.
 
 You are a senior software consultant.
 
 The client has answered:
 
-{json.dumps(answers, indent=2)}
+""" + json.dumps(answers, indent=2) + """
 
 The available services are:
 
-{json.dumps(services, indent=2)}
+""" + json.dumps(services, indent=2) + """
 
 Rules:
 
-1. NEVER invent a service.
+1. NEVER invent any service.
 
-2. ONLY use services from the pricing table.
+2. ONLY use services found in the pricing table.
 
-3. Think like a consultant.
+3. Think like an experienced software consultant.
 
 4. Ask ONLY ONE question at a time.
 
-5. Present the available options using letters.
+5. Present available choices using letters.
 
 Example:
 
@@ -3129,38 +3129,34 @@ B. E-commerce Website
 
 C. School Website
 
-6. If enough information has been collected,
-return COMPLETE=true.
+6. Continue asking questions until you have enough information.
 
-7. If COMPLETE=true,
-also return the selected service names.
+7. When enough information has been collected, return:
 
-Return ONLY JSON.
+{
+  "complete": true,
+  "selected": [
+    "Business Website",
+    "6-10 Pages",
+    "Contact Form",
+    "M-Pesa Integration",
+    "Hosting Setup"
+  ]
+}
 
-Example:
+8. Otherwise return:
 
 {
   "complete": false,
   "question": "What type of website would you like?",
-  "options":[
-      "Business Website",
-      "E-commerce Website",
-      "School Website"
+  "options": [
+    "Business Website",
+    "E-commerce Website",
+    "School Website"
   ]
 }
 
-OR
-
-{
-  "complete": true,
-  "selected":[
-      "Business Website",
-      "6-10 Pages",
-      "Contact Form",
-      "MPESA Integration",
-      "Hosting Setup"
-  ]
-}
+Return ONLY valid JSON.
 """
 
         response = client.models.generate_content(
@@ -3173,19 +3169,19 @@ OR
 
         ai = json.loads(text)
 
-        # -----------------------------
-        # Still asking questions
-        # -----------------------------
-        if not ai["complete"]:
+        # ----------------------------------
+        # AI still asking questions
+        # ----------------------------------
+        if ai.get("complete") is False:
             return jsonify(ai)
 
-        # -----------------------------
+        # ----------------------------------
         # Build quotation
-        # -----------------------------
+        # ----------------------------------
         items = []
         total = 0
 
-        for service in ai["selected"]:
+        for service in ai.get("selected", []):
 
             result = (
                 supabase
@@ -3203,10 +3199,10 @@ OR
                 items.append({
                     "service": row["service_name"],
                     "description": row["description"],
-                    "price": row["price"]
+                    "price": float(row["price"])
                 })
 
-                total += row["price"]
+                total += float(row["price"])
 
         return jsonify({
 
@@ -3227,7 +3223,6 @@ OR
         return jsonify({
             "error": str(e)
         }), 500
-    
 # ============================================================
 # RUN APP
 # ============================================================
