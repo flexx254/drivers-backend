@@ -3077,66 +3077,90 @@ def contract_balance(connection_id):
 @app.route("/generate-quotation", methods=["POST"])
 def generate_quotation():
     try:
-        data = request.get_json()
+
+        data = request.get_json() or {}
 
         answers = data.get("answers", [])
 
+        # -----------------------------
+        # Load all available services
+        # -----------------------------
+        pricing = (
+            supabase
+            .table("pricing")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        )
+
+        services = pricing.data
+
         prompt = f"""
-You are Tanda AI, a professional software consultant.
+You are Tanda AI.
 
-The client answered the following questions:
+You are a senior software consultant.
 
-1. Website/System Type:
-{answers[0] if len(answers) > 0 else ""}
+The client has answered:
 
-2. Business Description:
-{answers[1] if len(answers) > 1 else ""}
+{json.dumps(answers, indent=2)}
 
-3. Features Required:
-{answers[2] if len(answers) > 2 else ""}
+The available services are:
 
-4. Payment Integration:
-{answers[3] if len(answers) > 3 else ""}
+{json.dumps(services, indent=2)}
 
-5. Timeline:
-{answers[4] if len(answers) > 4 else ""}
+Rules:
 
-Based on the client's answers, generate a quotation.
+1. NEVER invent a service.
 
-Return ONLY valid JSON in this exact format:
+2. ONLY use services from the pricing table.
 
-{{
-  "title":"",
-  "client_name":"",
-  "services":[
-    {{
-      "name":"",
-      "description":"",
-      "price":0
-    }},
-    {{
-      "name":"",
-      "description":"",
-      "price":0
-    }},
-    {{
-      "name":"",
-      "description":"",
-      "price":0
-    }}
-  ],
-  "total":0,
-  "terms":[
-    "",
-    "",
-    "",
-    ""
+3. Think like a consultant.
+
+4. Ask ONLY ONE question at a time.
+
+5. Present the available options using letters.
+
+Example:
+
+A. Business Website
+
+B. E-commerce Website
+
+C. School Website
+
+6. If enough information has been collected,
+return COMPLETE=true.
+
+7. If COMPLETE=true,
+also return the selected service names.
+
+Return ONLY JSON.
+
+Example:
+
+{
+  "complete": false,
+  "question": "What type of website would you like?",
+  "options":[
+      "Business Website",
+      "E-commerce Website",
+      "School Website"
   ]
-}}
+}
 
-Do not use markdown.
-Do not explain anything.
-Return only JSON.
+OR
+
+{
+  "complete": true,
+  "selected":[
+      "Business Website",
+      "6-10 Pages",
+      "Contact Form",
+      "MPESA Integration",
+      "Hosting Setup"
+  ]
+}
 """
 
         response = client.models.generate_content(
@@ -3144,20 +3168,66 @@ Return only JSON.
             contents=prompt
         )
 
-        quotation = json.loads(response.text)
+        text = response.text.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+
+        ai = json.loads(text)
+
+        # -----------------------------
+        # Still asking questions
+        # -----------------------------
+        if not ai["complete"]:
+            return jsonify(ai)
+
+        # -----------------------------
+        # Build quotation
+        # -----------------------------
+        items = []
+        total = 0
+
+        for service in ai["selected"]:
+
+            result = (
+                supabase
+                .table("pricing")
+                .select("*")
+                .eq("service_name", service)
+                .single()
+                .execute()
+            )
+
+            if result.data:
+
+                row = result.data
+
+                items.append({
+                    "service": row["service_name"],
+                    "description": row["description"],
+                    "price": row["price"]
+                })
+
+                total += row["price"]
 
         return jsonify({
-            "success": True,
-            "quotation": quotation
+
+            "complete": True,
+
+            "title": "Website & Software Development Quotation",
+
+            "items": items,
+
+            "total": total
+
         })
 
     except Exception as e:
-        logger.exception("Quotation generation failed")
+
+        logger.exception(e)
 
         return jsonify({
-            "success": False,
             "error": str(e)
         }), 500
+    
 # ============================================================
 # RUN APP
 # ============================================================
