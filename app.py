@@ -3077,86 +3077,290 @@ def contract_balance(connection_id):
 
 @app.route("/generate-quotation", methods=["POST"])
 def generate_quotation():
+
     try:
 
         data = request.get_json() or {}
-        answers = data.get("answers", [])
 
-        # ----------------------------------
-        # Load pricing table
-        # ----------------------------------
-        pricing = (
-            supabase
-            .table("pricing")
+        selected = data.get("selected", {})
+
+        items = []
+        total = 0
+
+        # -----------------------------------
+        # Helper function
+        # -----------------------------------
+        def add_item(table_name, item_name):
+
+            nonlocal total
+
+            if not item_name:
+                return
+
+            result = (
+                supabase
+                .table(table_name)
+                .select("name, description, price")
+                .eq("name", item_name)
+                .single()
+                .execute()
+            )
+
+            if result.data:
+
+                row = result.data
+
+                price = float(row.get("price") or 0)
+
+                items.append({
+                    "category": table_name.replace("_", " ").title(),
+                    "service": row["name"],
+                    "description": row.get("description", ""),
+                    "price": price
+                })
+
+                total += price
+
+        # -----------------------------------
+        # Website Type
+        # -----------------------------------
+
+        add_item(
+            "website_types",
+            selected.get("website_type")
+        )
+
+        # -----------------------------------
+        # Pages
+        # -----------------------------------
+
+        for page in selected.get("pages", []):
+
+            add_item(
+                "website_pages",
+                page
+            )
+
+        # -----------------------------------
+        # Forms
+        # -----------------------------------
+
+        for form in selected.get("forms", []):
+
+            add_item(
+                "website_forms",
+                form
+            )
+
+        # -----------------------------------
+        # Features
+        # -----------------------------------
+
+        for feature in selected.get("features", []):
+
+            add_item(
+                "website_features",
+                feature
+            )
+
+        return jsonify({
+
+            "success": True,
+
+            "title": "Website & Software Development Quotation",
+
+            "items": items,
+
+            "total": total,
+
+            "currency": "KES"
+
+        })
+
+    except Exception as e:
+
+        logger.exception(e)
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
+
+@app.route("/ai-consultation", methods=["POST"])
+def ai_consultation():
+
+    try:
+
+        data = request.get_json() or {}
+
+        conversation = data.get("conversation", [])
+
+        industries = (
+            supabase.table("industries")
             .select("*")
             .eq("is_active", True)
             .order("display_order")
             .execute()
-        )
+        ).data
 
-        services = pricing.data
+        website_types = (
+            supabase.table("website_types")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-        prompt = """
+        website_pages = (
+            supabase.table("website_pages")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_forms = (
+            supabase.table("website_forms")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_features = (
+            supabase.table("website_features")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        industry_requirements = (
+            supabase.table("industry_requirements")
+            .select("*")
+            .order("display_order")
+            .execute()
+        ).data
+
+        feature_dependencies = (
+            supabase.table("feature_dependencies")
+            .select("*")
+            .execute()
+        ).data
+
+        prompt = f"""
 You are Tanda AI.
 
-You are a senior software consultant.
+You are an experienced software consultant.
 
-The client has answered:
+Your ONLY job is to consult the client.
 
-""" + json.dumps(answers, indent=2) + """
+Never generate a quotation.
 
-The available services are:
+Use ONLY the supplied database.
 
-""" + json.dumps(services, indent=2) + """
+Knowledge Base
 
-Rules:
+Industries
 
-1. NEVER invent any service.
+{json.dumps(industries, indent=2)}
 
-2. ONLY use services found in the pricing table.
+Website Types
 
-3. Think like an experienced software consultant.
+{json.dumps(website_types, indent=2)}
 
-4. Ask ONLY ONE question at a time.
+Website Pages
 
-5. Present available choices using letters.
+{json.dumps(website_pages, indent=2)}
 
-Example:
+Website Forms
 
-A. Business Website
+{json.dumps(website_forms, indent=2)}
 
-B. E-commerce Website
+Website Features
 
-C. School Website
+{json.dumps(website_features, indent=2)}
 
-6. Continue asking questions until you have enough information.
+Industry Requirements
 
-7. When enough information has been collected, return:
+{json.dumps(industry_requirements, indent=2)}
 
-{
-  "complete": true,
-  "selected": [
-    "Business Website",
-    "6-10 Pages",
-    "Contact Form",
-    "M-Pesa Integration",
-    "Hosting Setup"
-  ]
-}
+Feature Dependencies
 
-8. Otherwise return:
+{json.dumps(feature_dependencies, indent=2)}
 
-{
+Conversation History
+
+{json.dumps(conversation, indent=2)}
+
+Rules
+
+1. Be friendly and professional.
+
+2. Ask only ONE question at a time.
+
+3. Understand the client's business first.
+
+4. Recommend the best website type.
+
+5. Recommend the required pages.
+
+6. Recommend optional pages.
+
+7. Recommend required forms.
+
+8. Recommend optional forms.
+
+9. Recommend required features.
+
+10. Recommend optional features.
+
+11. Explain WHY you recommend them.
+
+12. Use ONLY names from the supplied database.
+
+13. Never invent pages, forms, features or website types.
+
+14. When asking a question, always include choices where appropriate.
+
+15. If consultation is not complete, return ONLY:
+
+{{
   "complete": false,
-  "question": "What type of website would you like?",
+  "message": "Your next question.",
   "options": [
-    "Business Website",
-    "E-commerce Website",
-    "School Website"
+      "Choice 1",
+      "Choice 2",
+      "Choice 3"
   ]
-}
+}}
+
+16. When consultation is complete, return ONLY:
+
+{{
+  "complete": true,
+  "summary": "Brief explanation of the recommended solution.",
+  "selected": {{
+      "website_type": "...",
+      "pages": [
+          "..."
+      ],
+      "forms": [
+          "..."
+      ],
+      "features": [
+          "..."
+      ]
+  }},
+  "message": "Everything is ready. Would you like me to generate your quotation now?"
+}}
 
 Return ONLY valid JSON.
+
+Do not wrap JSON in markdown.
 """
 
         response = client.models.generate_content(
@@ -3167,54 +3371,7 @@ Return ONLY valid JSON.
         text = response.text.strip()
         text = text.replace("```json", "").replace("```", "").strip()
 
-        ai = json.loads(text)
-
-        # ----------------------------------
-        # AI still asking questions
-        # ----------------------------------
-        if ai.get("complete") is False:
-            return jsonify(ai)
-
-        # ----------------------------------
-        # Build quotation
-        # ----------------------------------
-        items = []
-        total = 0
-
-        for service in ai.get("selected", []):
-
-            result = (
-                supabase
-                .table("pricing")
-                .select("*")
-                .eq("service_name", service)
-                .single()
-                .execute()
-            )
-
-            if result.data:
-
-                row = result.data
-
-                items.append({
-                    "service": row["service_name"],
-                    "description": row["description"],
-                    "price": float(row["price"])
-                })
-
-                total += float(row["price"])
-
-        return jsonify({
-
-            "complete": True,
-
-            "title": "Website & Software Development Quotation",
-
-            "items": items,
-
-            "total": total
-
-        })
+        return jsonify(json.loads(text))
 
     except Exception as e:
 
