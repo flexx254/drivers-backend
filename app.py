@@ -3194,159 +3194,194 @@ def generate_quotation():
 @app.route("/ai-consultation", methods=["POST"])
 def ai_consultation():
 
-    payload = request.get_json()
+    try:
 
-    state = payload.get("state", {})
+        data = request.get_json() or {}
 
-    answer = payload.get("answer", "").strip()
+        conversation = data.get("conversation", [])
 
-    # ---------------------------------------
-    # STEP 1
-    # ---------------------------------------
+        industries = (
+            supabase.table("industries")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-    if not state:
+        website_types = (
+            supabase.table("website_types")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-        return jsonify({
+        website_pages = (
+            supabase.table("website_pages")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-            "complete": False,
+        website_forms = (
+            supabase.table("website_forms")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-            "state": {
-                "step": 1
-            },
+        website_features = (
+            supabase.table("website_features")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
 
-            "message":
-            "What type of business do you own?"
+        industry_requirements = (
+            supabase.table("industry_requirements")
+            .select("*")
+            .order("display_order")
+            .execute()
+        ).data
 
-        })
+        feature_dependencies = (
+            supabase.table("feature_dependencies")
+            .select("*")
+            .execute()
+        ).data
 
-    # ---------------------------------------
-    # STEP 2
-    # ---------------------------------------
+        prompt = f"""
+You are Tanda AI.
 
-    if state["step"] == 1:
+You are an experienced software consultant.
 
-        business = answer
+Your ONLY job is to consult the client.
 
-        package = get_package_from_database(business)
+Never generate a quotation.
 
-        if not package:
+Use ONLY the supplied database.
 
-            return jsonify({
+Knowledge Base
 
-                "complete": False,
+Industries
 
-                "state": state,
+{json.dumps(industries, indent=2)}
 
-                "message":
-                "Sorry. I don't have a package for that business yet."
+Website Types
 
-            })
+{json.dumps(website_types, indent=2)}
 
-        state = {
+Website Pages
 
-            "step": 2,
+{json.dumps(website_pages, indent=2)}
 
-            "business": business,
+Website Forms
 
-            "package_id": package["id"],
+{json.dumps(website_forms, indent=2)}
 
-            "features": package["features"]
+Website Features
 
-        }
+{json.dumps(website_features, indent=2)}
 
-        feature_list = "\n".join(
+Industry Requirements
 
-            f"• {x}" for x in package["features"]
+{json.dumps(industry_requirements, indent=2)}
 
+Feature Dependencies
+
+{json.dumps(feature_dependencies, indent=2)}
+
+Conversation History
+
+{json.dumps(conversation, indent=2)}
+
+Rules
+
+1. Be friendly and professional.
+
+2. Ask only ONE question at a time.
+
+3. Understand the client's business first.
+
+4. Recommend the best website type.
+
+5. Recommend the required pages.
+
+6. Recommend optional pages.
+
+7. Recommend required forms.
+
+8. Recommend optional forms.
+
+9. Recommend required features.
+
+10. Recommend optional features.
+
+11. Explain WHY you recommend them.
+
+12. Use ONLY names from the supplied database.
+
+13. Never invent pages, forms, features or website types.
+
+14. When asking a question, always include choices where appropriate.
+
+15. If consultation is not complete, return ONLY:
+
+{{
+  "complete": false,
+  "message": "Your next question.",
+  "options": [
+      "Choice 1",
+      "Choice 2",
+      "Choice 3"
+  ]
+}}
+
+16. When consultation is complete, return ONLY:
+
+{{
+  "complete": true,
+  "summary": "Brief explanation of the recommended solution.",
+  "selected": {{
+      "website_type": "...",
+      "pages": [
+          "..."
+      ],
+      "forms": [
+          "..."
+      ],
+      "features": [
+          "..."
+      ]
+  }},
+  "message": "Everything is ready. Would you like me to generate your quotation now?"
+}}
+
+Return ONLY valid JSON.
+
+Do not wrap JSON in markdown.
+"""
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
         )
 
-        return jsonify({
+        text = response.text.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
 
-            "complete": False,
+        return jsonify(json.loads(text))
 
-            "state": state,
+    except Exception as e:
 
-            "message":
-            f"""We recommend our {package['name']}.
-
-Included features:
-
-{feature_list}
-
-Would you like to add or remove anything?"""
-
-        })
-
-    # ---------------------------------------
-    # STEP 3
-    # ---------------------------------------
-
-    if state["step"] == 2:
-
-        if answer.lower() in ["no", "none", "looks good"]:
-
-            state["step"] = 3
-
-            return jsonify({
-
-                "complete": False,
-
-                "state": state,
-
-                "message":
-                "Is this your final specification? Reply Yes or No."
-
-            })
-
-        # Simple add/remove handled without AI
-
-        state["features"].append(answer)
-
-        state["step"] = 3
+        logger.exception(e)
 
         return jsonify({
-
-            "complete": False,
-
-            "state": state,
-
-            "message":
-            f'"{answer}" has been added.\n\nIs this your final specification?'
-
-        })
-
-    # ---------------------------------------
-    # STEP 4
-    # ---------------------------------------
-
-    if state["step"] == 3:
-
-        if answer.lower() != "yes":
-
-            state["step"] = 2
-
-            return jsonify({
-
-                "complete": False,
-
-                "state": state,
-
-                "message":
-                "What would you like to change?"
-
-            })
-
-        return jsonify({
-
-            "complete": True,
-
-            "business": state["business"],
-
-            "package_id": state["package_id"],
-
-            "features": state["features"]
-
-        })
+            "error": str(e)
+        }), 500            
 
 # ============================================================
 # RUN APP
