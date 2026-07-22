@@ -3189,197 +3189,165 @@ def generate_quotation():
 
         }), 500
 
+
+
 @app.route("/ai-consultation", methods=["POST"])
 def ai_consultation():
 
-    try:
+    payload = request.get_json()
 
-        data = request.get_json() or {}
+    state = payload.get("state", {})
 
-        conversation = data.get("conversation", [])
+    answer = payload.get("answer", "").strip()
 
-        industries = (
-            supabase.table("industries")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
+    # ---------------------------------------
+    # STEP 1
+    # ---------------------------------------
 
-        website_types = (
-            supabase.table("website_types")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_pages = (
-            supabase.table("website_pages")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_forms = (
-            supabase.table("website_forms")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_features = (
-            supabase.table("website_features")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        industry_requirements = (
-            supabase.table("industry_requirements")
-            .select("*")
-            .order("display_order")
-            .execute()
-        ).data
-
-        feature_dependencies = (
-            supabase.table("feature_dependencies")
-            .select("*")
-            .execute()
-        ).data
-
-        prompt = f"""
-You are Tanda AI.
-
-You are an experienced software consultant.
-
-Your ONLY job is to consult the client.
-
-Never generate a quotation.
-
-Use ONLY the supplied database.
-
-Knowledge Base
-
-Industries
-
-{json.dumps(industries, indent=2)}
-
-Website Types
-
-{json.dumps(website_types, indent=2)}
-
-Website Pages
-
-{json.dumps(website_pages, indent=2)}
-
-Website Forms
-
-{json.dumps(website_forms, indent=2)}
-
-Website Features
-
-{json.dumps(website_features, indent=2)}
-
-Industry Requirements
-
-{json.dumps(industry_requirements, indent=2)}
-
-Feature Dependencies
-
-{json.dumps(feature_dependencies, indent=2)}
-
-Conversation History
-
-{json.dumps(conversation, indent=2)}
-
-Rules
-
-1. Be friendly and professional.
-
-2. Ask only ONE question at a time.
-
-3. Understand the client's business first.
-
-4. Recommend the best website type.
-
-5. Recommend the required pages.
-
-6. Recommend optional pages.
-
-7. Recommend required forms.
-
-8. Recommend optional forms.
-
-9. Recommend required features.
-
-10. Recommend optional features.
-
-11. Explain WHY you recommend them.
-
-12. Use ONLY names from the supplied database.
-
-13. Never invent pages, forms, features or website types.
-
-14. When asking a question, always include choices where appropriate.
-
-15. If consultation is not complete, return ONLY:
-
-{{
-  "complete": false,
-  "message": "Your next question.",
-  "options": [
-      "Choice 1",
-      "Choice 2",
-      "Choice 3"
-  ]
-}}
-
-16. When consultation is complete, return ONLY:
-
-{{
-  "complete": true,
-  "summary": "Brief explanation of the recommended solution.",
-  "selected": {{
-      "website_type": "...",
-      "pages": [
-          "..."
-      ],
-      "forms": [
-          "..."
-      ],
-      "features": [
-          "..."
-      ]
-  }},
-  "message": "Everything is ready. Would you like me to generate your quotation now?"
-}}
-
-Return ONLY valid JSON.
-
-Do not wrap JSON in markdown.
-"""
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-
-        text = response.text.strip()
-        text = text.replace("```json", "").replace("```", "").strip()
-
-        return jsonify(json.loads(text))
-
-    except Exception as e:
-
-        logger.exception(e)
+    if not state:
 
         return jsonify({
-            "error": str(e)
-        }), 500
+
+            "complete": False,
+
+            "state": {
+                "step": 1
+            },
+
+            "message":
+            "What type of business do you own?"
+
+        })
+
+    # ---------------------------------------
+    # STEP 2
+    # ---------------------------------------
+
+    if state["step"] == 1:
+
+        business = answer
+
+        package = get_package_from_database(business)
+
+        if not package:
+
+            return jsonify({
+
+                "complete": False,
+
+                "state": state,
+
+                "message":
+                "Sorry. I don't have a package for that business yet."
+
+            })
+
+        state = {
+
+            "step": 2,
+
+            "business": business,
+
+            "package_id": package["id"],
+
+            "features": package["features"]
+
+        }
+
+        feature_list = "\n".join(
+
+            f"• {x}" for x in package["features"]
+
+        )
+
+        return jsonify({
+
+            "complete": False,
+
+            "state": state,
+
+            "message":
+            f"""We recommend our {package['name']}.
+
+Included features:
+
+{feature_list}
+
+Would you like to add or remove anything?"""
+
+        })
+
+    # ---------------------------------------
+    # STEP 3
+    # ---------------------------------------
+
+    if state["step"] == 2:
+
+        if answer.lower() in ["no", "none", "looks good"]:
+
+            state["step"] = 3
+
+            return jsonify({
+
+                "complete": False,
+
+                "state": state,
+
+                "message":
+                "Is this your final specification? Reply Yes or No."
+
+            })
+
+        # Simple add/remove handled without AI
+
+        state["features"].append(answer)
+
+        state["step"] = 3
+
+        return jsonify({
+
+            "complete": False,
+
+            "state": state,
+
+            "message":
+            f'"{answer}" has been added.\n\nIs this your final specification?'
+
+        })
+
+    # ---------------------------------------
+    # STEP 4
+    # ---------------------------------------
+
+    if state["step"] == 3:
+
+        if answer.lower() != "yes":
+
+            state["step"] = 2
+
+            return jsonify({
+
+                "complete": False,
+
+                "state": state,
+
+                "message":
+                "What would you like to change?"
+
+            })
+
+        return jsonify({
+
+            "complete": True,
+
+            "business": state["business"],
+
+            "package_id": state["package_id"],
+
+            "features": state["features"]
+
+        })
+
 # ============================================================
 # RUN APP
 # ============================================================
