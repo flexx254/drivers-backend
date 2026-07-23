@@ -3082,14 +3082,27 @@ def generate_quotation():
 
         data = request.get_json() or {}
 
-        selected = data.get("selected", {})
+        # -----------------------------------
+        # Accept BOTH formats
+        # -----------------------------------
+
+        if "consultation" in data:
+            selected = data["consultation"].get("selected", {})
+            title = data["consultation"].get(
+                "title",
+                "Website & Software Development Quotation"
+            )
+        else:
+            selected = data.get("selected", {})
+            title = "Website & Software Development Quotation"
 
         items = []
         total = 0
 
         # -----------------------------------
-        # Helper function
+        # Helper
         # -----------------------------------
+
         def add_item(table_name, item_name):
 
             nonlocal total
@@ -3100,26 +3113,32 @@ def generate_quotation():
             result = (
                 supabase
                 .table(table_name)
-                .select("name, description, price")
+                .select("name,description,price")
                 .eq("name", item_name)
-                .single()
+                .limit(1)
                 .execute()
             )
 
-            if result.data:
+            if not result.data:
+                return
 
-                row = result.data
+            row = result.data[0]
 
-                price = float(row.get("price") or 0)
+            price = float(row.get("price") or 0)
 
-                items.append({
-                    "category": table_name.replace("_", " ").title(),
-                    "service": row["name"],
-                    "description": row.get("description", ""),
-                    "price": price
-                })
+            items.append({
 
-                total += price
+                "category": table_name.replace("_", " ").title(),
+
+                "service": row["name"],
+
+                "description": row.get("description", ""),
+
+                "price": price
+
+            })
+
+            total += price
 
         # -----------------------------------
         # Website Type
@@ -3167,13 +3186,15 @@ def generate_quotation():
 
             "success": True,
 
-            "title": "Website & Software Development Quotation",
+            "title": title,
 
             "items": items,
 
             "total": total,
 
-            "currency": "KES"
+            "currency": "KES",
+
+            "selected": selected
 
         })
 
@@ -3188,7 +3209,6 @@ def generate_quotation():
             "error": str(e)
 
         }), 500
-
 
 
 @app.route("/ai-consultation", methods=["POST"])
