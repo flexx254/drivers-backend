@@ -3344,7 +3344,93 @@ Do not wrap JSON in markdown.
         return jsonify({
             "error": str(e)
         }), 500
-        
+
+
+@app.route("/knowledge-base", methods=["GET"])
+def knowledge_base():
+
+    try:
+
+        industries = (
+            supabase.table("industries")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_types = (
+            supabase.table("website_types")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_pages = (
+            supabase.table("website_pages")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_forms = (
+            supabase.table("website_forms")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        website_features = (
+            supabase.table("website_features")
+            .select("*")
+            .eq("is_active", True)
+            .order("display_order")
+            .execute()
+        ).data
+
+        industry_requirements = (
+            supabase.table("industry_requirements")
+            .select("*")
+            .order("display_order")
+            .execute()
+        ).data
+
+        feature_dependencies = (
+            supabase.table("feature_dependencies")
+            .select("*")
+            .execute()
+        ).data
+
+        return jsonify({
+
+            "industries": industries,
+
+            "website_types": website_types,
+
+            "website_pages": website_pages,
+
+            "website_forms": website_forms,
+
+            "website_features": website_features,
+
+            "industry_requirements": industry_requirements,
+
+            "feature_dependencies": feature_dependencies
+
+        })
+
+    except Exception as e:
+
+        logger.exception(e)
+
+        return jsonify({
+
+            "error": str(e)
+
+        }), 500
 # ============================================================
 # RUN APP
 # ============================================================
