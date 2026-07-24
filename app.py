@@ -3211,6 +3211,9 @@ def generate_quotation():
         }), 500
 
 
+
+        
+
 @app.route("/ai-consultation", methods=["POST"])
 def ai_consultation():
 
@@ -3220,58 +3223,7 @@ def ai_consultation():
 
         conversation = data.get("conversation", [])
 
-        industries = (
-            supabase.table("industries")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_types = (
-            supabase.table("website_types")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_pages = (
-            supabase.table("website_pages")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_forms = (
-            supabase.table("website_forms")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        website_features = (
-            supabase.table("website_features")
-            .select("*")
-            .eq("is_active", True)
-            .order("display_order")
-            .execute()
-        ).data
-
-        industry_requirements = (
-            supabase.table("industry_requirements")
-            .select("*")
-            .order("display_order")
-            .execute()
-        ).data
-
-        feature_dependencies = (
-            supabase.table("feature_dependencies")
-            .select("*")
-            .execute()
-        ).data
+        knowledge = data.get("knowledge", {})
 
         prompt = f"""
 You are Tanda AI.
@@ -3282,37 +3234,11 @@ Your ONLY job is to consult the client.
 
 Never generate a quotation.
 
-Use ONLY the supplied database.
+Use ONLY the supplied knowledge base.
 
 Knowledge Base
 
-Industries
-
-{json.dumps(industries, indent=2)}
-
-Website Types
-
-{json.dumps(website_types, indent=2)}
-
-Website Pages
-
-{json.dumps(website_pages, indent=2)}
-
-Website Forms
-
-{json.dumps(website_forms, indent=2)}
-
-Website Features
-
-{json.dumps(website_features, indent=2)}
-
-Industry Requirements
-
-{json.dumps(industry_requirements, indent=2)}
-
-Feature Dependencies
-
-{json.dumps(feature_dependencies, indent=2)}
+{json.dumps(knowledge, indent=2)}
 
 Conversation History
 
@@ -3324,60 +3250,75 @@ Rules
 
 2. Ask only ONE question at a time.
 
-3. Understand the client's business first.
+3. First understand the client's business.
 
-4. Recommend the best website type.
+4. If the industry is not found exactly, intelligently choose the closest matching industry from the knowledge base.
 
-5. Recommend the required pages.
+5. Recommend the most appropriate website type.
 
-6. Recommend optional pages.
+6. Recommend the required pages.
 
-7. Recommend required forms.
+7. Recommend optional pages.
 
-8. Recommend optional forms.
+8. Recommend the required forms.
 
-9. Recommend required features.
+9. Recommend optional forms.
 
-10. Recommend optional features.
+10. Recommend the required features.
 
-11. Explain WHY you recommend them.
+11. Recommend optional features.
 
-12. Use ONLY names from the supplied database.
+12. Explain briefly why each recommendation is suitable.
 
-13. Never invent pages, forms, features or website types.
+13. Use ONLY names that exist inside the supplied knowledge base.
 
-14. When asking a question, always include choices where appropriate.
+14. Never invent website types, pages, forms or features.
 
-15. If consultation is not complete, return ONLY:
+15. If two industries share similar functionality (for example a school and a training institute), you may reuse the architecture from the closest matching industry.
+
+16. Ask only ONE question at a time.
+
+17. Always include choices whenever possible.
+
+18. Remember previous answers from the conversation history. Never ask the same question twice unless the user changes their answer.
+
+19. When consultation is NOT complete, return ONLY:
 
 {{
-  "complete": false,
-  "message": "Your next question.",
-  "options": [
-      "Choice 1",
-      "Choice 2",
-      "Choice 3"
-  ]
+    "complete": false,
+    "message": "Your next question.",
+    "options":[
+        "Choice 1",
+        "Choice 2",
+        "Choice 3"
+    ]
 }}
 
-16. When consultation is complete, return ONLY:
+20. When consultation IS complete, return ONLY:
 
 {{
-  "complete": true,
-  "summary": "Brief explanation of the recommended solution.",
-  "selected": {{
-      "website_type": "...",
-      "pages": [
-          "..."
-      ],
-      "forms": [
-          "..."
-      ],
-      "features": [
-          "..."
-      ]
-  }},
-  "message": "Everything is ready. Would you like me to generate your quotation now?"
+    "complete": true,
+    "summary":"Brief explanation of the recommended solution.",
+
+    "selected":{{
+        "industry":"...",
+
+        "website_type":"...",
+
+        "pages":[
+            "..."
+        ],
+
+        "forms":[
+            "..."
+        ],
+
+        "features":[
+            "..."
+        ]
+    }},
+
+    "message":"Everything is ready. Would you like me to generate your quotation now?"
 }}
 
 Return ONLY valid JSON.
@@ -3391,6 +3332,7 @@ Do not wrap JSON in markdown.
         )
 
         text = response.text.strip()
+
         text = text.replace("```json", "").replace("```", "").strip()
 
         return jsonify(json.loads(text))
@@ -3401,8 +3343,8 @@ Do not wrap JSON in markdown.
 
         return jsonify({
             "error": str(e)
-        }), 500            
-
+        }), 500
+        
 # ============================================================
 # RUN APP
 # ============================================================
