@@ -3065,9 +3065,7 @@ def contract_balance(connection_id):
             }
         ).execute()
 
-        return jsonify({
-            "outstanding_balance": result.data or 0
-        }), 200
+        return jsonify(result.data), 200
 
     except Exception as e:
         return jsonify({
