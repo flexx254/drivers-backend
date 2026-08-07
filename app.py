@@ -2949,6 +2949,10 @@ def create_remittance_day():
         }), 500
     
 
+
+        
+
+
 @app.route(
     "/payment-installments/<int:connection_id>",
     methods=["GET"]
@@ -2968,11 +2972,13 @@ def driver_contract_remittance(connection_id):
         # GET DRIVER ID
         # =========================================
 
-        driver_res = supabase.table("dere") \
-            .select("id") \
-            .eq("email", driver_email) \
-            .single() \
+        driver_res = (
+            supabase.table("dere")
+            .select("id")
+            .eq("email", driver_email)
+            .single()
             .execute()
+        )
 
         if not driver_res.data:
             return jsonify({
@@ -2982,15 +2988,26 @@ def driver_contract_remittance(connection_id):
         driver_id = driver_res.data["id"]
 
         # =========================================
+        # WEEK TO DISPLAY
+        # =========================================
+
+        requested_week = request.args.get("week", type=int)
+
+        if requested_week is None:
+            requested_week = date.today().isocalendar()[1]
+
+        # =========================================
         # VERIFY CONNECTION BELONGS TO DRIVER
         # =========================================
 
-        connection_res = supabase.table("connections") \
-            .select("id") \
-            .eq("id", connection_id) \
-            .eq("driver_id", driver_id) \
-            .single() \
+        connection_res = (
+            supabase.table("connections")
+            .select("id")
+            .eq("id", connection_id)
+            .eq("driver_id", driver_id)
+            .single()
             .execute()
+        )
 
         if not connection_res.data:
             return jsonify({
@@ -2998,10 +3015,11 @@ def driver_contract_remittance(connection_id):
             }), 404
 
         # =========================================
-        # FETCH REMITTANCE USING DRIVER ID CHECK
+        # FETCH REMITTANCE FOR REQUESTED WEEK
         # =========================================
 
-        remittance_res = supabase.table("remittance") \
+        remittance_res = (
+            supabase.table("remittance")
             .select("""
                 id,
                 remittance_date,
@@ -3016,22 +3034,48 @@ def driver_contract_remittance(connection_id):
                 payment_received_at,
                 notes,
                 created_at
-            """) \
-            .eq("connection_id", connection_id) \
-            .eq("driver_id", driver_id) \
-            .order("remittance_date", desc=False) \
+            """)
+            .eq("connection_id", connection_id)
+            .eq("driver_id", driver_id)
+            .eq("week_number", requested_week)
+            .order("remittance_date", desc=False)
             .execute()
+        )
 
-        return jsonify(remittance_res.data), 200
+        return jsonify({
+            "success": True,
+            "week": requested_week,
+            "records": remittance_res.data
+        }), 200
 
     except Exception as e:
 
         print("DRIVER REMITTANCE ERROR:", str(e))
 
         return jsonify({
+            "success": False,
             "error": str(e)
         }), 500
 
+
+@app.route("/test-gemini", methods=["GET"])
+def test_gemini():
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents="Say hello from Gemini."
+        )
+
+        return jsonify({
+            "success": True,
+            "response": response.text
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500                
 
 @app.route("/test-gemini", methods=["GET"])
 def test_gemini():
