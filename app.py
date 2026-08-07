@@ -3071,24 +3071,6 @@ def test_gemini():
             "error": str(e)
         }), 500                
 
-@app.route("/test-gemini", methods=["GET"])
-def test_gemini():
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents="Say hello from Gemini."
-        )
-
-        return jsonify({
-            "success": True,
-            "response": response.text
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
 
 @app.route("/contract-balance/<int:connection_id>", methods=["GET"])
