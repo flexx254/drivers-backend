@@ -977,6 +977,148 @@ def login():
     }), 200
 
 
+
+@app.route("/change-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+    except Exception:
+        return jsonify({
+            "success": False,
+            "error": "Invalid JSON body"
+        }), 400
+
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    confirm_password = data.get("confirm_password") or ""
+
+    # Get logged-in user's email from JWT
+    email = get_jwt_identity()
+
+    if not current_password:
+        return jsonify({
+            "success": False,
+            "error": "Current password is required"
+        }), 400
+
+    if not new_password:
+        return jsonify({
+            "success": False,
+            "error": "New password is required"
+        }), 400
+
+    if new_password != confirm_password:
+        return jsonify({
+            "success": False,
+            "error": "New passwords do not match"
+        }), 400
+
+    # Password requirements
+    if len(new_password) < 8:
+        return jsonify({
+            "success": False,
+            "error": "Password must be at least 8 characters"
+        }), 400
+
+    if not re.search(r"[A-Z]", new_password):
+        return jsonify({
+            "success": False,
+            "error": "Password must contain at least one capital letter"
+        }), 400
+
+    if not re.search(r"[a-z]", new_password):
+        return jsonify({
+            "success": False,
+            "error": "Password must contain at least one lowercase letter"
+        }), 400
+
+    if not re.search(r"[0-9]", new_password):
+        return jsonify({
+            "success": False,
+            "error": "Password must contain at least one number"
+        }), 400
+
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", new_password):
+        return jsonify({
+            "success": False,
+            "error": "Password must contain at least one special character"
+        }), 400
+
+    try:
+        # Find logged-in user
+        response = (
+            supabase
+            .table("dere")
+            .select("email,password")
+            .eq("email", email)
+            .single()
+            .execute()
+        )
+
+        user = response.data
+
+        if not user:
+            return jsonify({
+                "success": False,
+                "error": "User account not found"
+            }), 404
+
+        old_hash = user.get("password")
+
+        if not old_hash:
+            return jsonify({
+                "success": False,
+                "error": "Current password is not set"
+            }), 500
+
+        # Verify current password
+        if not bcrypt.checkpw(
+            current_password.encode("utf-8"),
+            old_hash.encode("utf-8")
+        ):
+            return jsonify({
+                "success": False,
+                "error": "Current password is incorrect"
+            }), 401
+
+        # Prevent using the same password
+        if bcrypt.checkpw(
+            new_password.encode("utf-8"),
+            old_hash.encode("utf-8")
+        ):
+            return jsonify({
+                "success": False,
+                "error": "New password must be different from your current password"
+            }), 400
+
+        # Hash new password
+        new_hash = bcrypt.hashpw(
+            new_password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        # Update password
+        supabase \
+            .table("dere") \
+            .update({"password": new_hash}) \
+            .eq("email", email) \
+            .execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Password changed successfully"
+        }), 200
+
+    except Exception as e:
+        logger.exception("Change password error: %s", str(e))
+
+        return jsonify({
+            "success": False,
+            "error": "Unable to change password"
+        }), 500
+
+        
 @app.route("/search-driver", methods=["GET"])
 def search_driver():
     try:
