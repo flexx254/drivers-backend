@@ -52,16 +52,24 @@ logger = logging.getLogger(__name__)
 
 from mailjet_rest import Client
 
-mailjet = Client(
-    auth=(
-        os.getenv("MAILJET_API_KEY"),
-        os.getenv("MAILJET_SECRET_KEY")
-    ),
-    version="v3.1"
-)
+# ---------- Mailjet (optional until credentials are available) ----------
+MAILJET_API_KEY = os.getenv("MAILJET_API_KEY")
+MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
+
+mailjet = None
+
+if MAILJET_API_KEY and MAILJET_SECRET_KEY:
+    mailjet = Client(
+        auth=(MAILJET_API_KEY, MAILJET_SECRET_KEY),
+        version="v3.1"
+    )
 
 def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
     try:
+        if mailjet is None:
+            logger.warning("Mailjet not configured. Email skipped.")
+            return False
+
         sender_email = os.getenv("MAILJET_SENDER_EMAIL")
         sender_name = os.getenv("MAILJET_SENDER_NAME", "Strategic Drivers")
 
