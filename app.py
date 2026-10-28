@@ -961,7 +961,7 @@ def login():
         return jsonify({"success": False, "error": "Database lookup failed"}), 500
 
     if not user:
-        return jsonify({"success": False, "error": "Email not found"}), 404
+        return jsonify({"success": False, "error": "Invalid email or user"}), 404
 
     hashed = user.get("password")
     if not hashed:
@@ -970,7 +970,7 @@ def login():
     # Check password
     try:
         if not bcrypt.checkpw(password.encode(), hashed.encode()):
-            return jsonify({"success": False, "error": "Incorrect password"}), 401
+            return jsonify({"success": False, "error": "Invalid email or password"}), 401
     except Exception as e:
         logger.exception("Password check error: %s", str(e))
         return jsonify({"success": False, "error": "Password verification failed"}), 500
