@@ -961,7 +961,7 @@ def login():
         return jsonify({"success": False, "error": "Database lookup failed"}), 500
 
     if not user:
-        return jsonify({"success": False, "error": "Invalid email or user"}), 404
+        return jsonify({"success": False, "error": "Invalid email or password"}), 401
 
     hashed = user.get("password")
     if not hashed:
