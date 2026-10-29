@@ -130,6 +130,14 @@ def hash_password(password: str) -> str:
     return hashed.decode("utf-8")
 
 app = Flask(__name__)
+
+# Initialize rate limiting
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "10 per minute"],
+    storage_uri="memory://"
+)
 # -----------------------------
 # JWT CONFIGURATION
 # -----------------------------
