@@ -935,6 +935,7 @@ def update_good_conduct():
 
 
 @app.route("/login", methods=["POST"])
+@limiter.limit("5 per minute")
 def login():
     try:
         data = request.get_json(force=True, silent=False) or {}
