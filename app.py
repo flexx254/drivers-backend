@@ -932,58 +932,101 @@ def login():
         data = request.get_json(force=True, silent=False) or {}
     except Exception as e:
         logger.exception("Failed to parse JSON body: %s", str(e))
-        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+        return jsonify({
+            "success": False,
+            "error": "Invalid JSON body"
+        }), 400
 
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
     if not email:
-        return jsonify({"success": False, "error": "Email is required"}), 400
+        return jsonify({
+            "success": False,
+            "error": "Email is required"
+        }), 400
+
     if not password:
-        return jsonify({"success": False, "error": "Password is required"}), 400
+        return jsonify({
+            "success": False,
+            "error": "Password is required"
+        }), 400
 
     if supabase is None:
-        return jsonify({"success": False, "error": "Database client missing"}), 500
+        return jsonify({
+            "success": False,
+            "error": "Login could not be completed. Please try again."
+        }), 500
 
     # Fetch user
     try:
         response = (
             supabase
             .table("dere")
-            .select("*")
+            .select("email, password")
             .eq("email", email)
-            .single()
+            .limit(1)
             .execute()
         )
-        user = response.data
+
+        user = response.data[0] if response.data else None
+
     except Exception as e:
         logger.exception("Supabase lookup error: %s", str(e))
-        return jsonify({"success": False, "error": "Database lookup failed"}), 500
+        return jsonify({
+            "success": False,
+            "error": "Login could not be completed. Please try again."
+        }), 500
 
+    # Use the same response for an unknown email and an incorrect password
     if not user:
-        return jsonify({"success": False, "error": "Invalid email or password"}), 401
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
 
     hashed = user.get("password")
+
     if not hashed:
-        return jsonify({"success": False, "error": "User password not set"}), 500
+        logger.error("Login attempted for an account without a stored password hash.")
+        return jsonify({
+            "success": False,
+            "error": "Login could not be completed. Please contact support."
+        }), 500
 
     # Check password
     try:
-        if not bcrypt.checkpw(password.encode(), hashed.encode()):
-            return jsonify({"success": False, "error": "Invalid email or password"}), 401
-    except Exception as e:
-        logger.exception("Password check error: %s", str(e))
-        return jsonify({"success": False, "error": "Password verification failed"}), 500
+        if not bcrypt.checkpw(
+            password.encode("utf-8"),
+            hashed.encode("utf-8")
+        ):
+            return jsonify({
+                "success": False,
+                "error": "Invalid email or password"
+            }), 401
 
-    # 🔥 CREATE REAL JWT TOKEN
-    access_token = create_access_token(identity=email)
+    except Exception as e:
+        logger.exception("Password verification error: %s", str(e))
+        return jsonify({
+            "success": False,
+            "error": "Login could not be completed. Please try again."
+        }), 500
+
+    # Create JWT token
+    try:
+        access_token = create_access_token(identity=email)
+    except Exception as e:
+        logger.exception("JWT creation error: %s", str(e))
+        return jsonify({
+            "success": False,
+            "error": "Login could not be completed. Please try again."
+        }), 500
 
     return jsonify({
         "success": True,
         "access_token": access_token,
         "message": "Login successful"
     }), 200
-
 
 
 @app.route("/change-password", methods=["POST"])
