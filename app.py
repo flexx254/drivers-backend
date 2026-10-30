@@ -1191,14 +1191,14 @@ def update_good_conduct():
 @limiter.limit("5 per minute")
 def login():
 
-    # 1. Validate request content type
+    # 1. Require JSON
     if not request.is_json:
         return jsonify({
             "success": False,
             "error": "Content-Type must be application/json"
         }), 400
 
-    # 2. Safely parse JSON
+    # 2. Parse JSON safely
     try:
         data = request.get_json(silent=False)
 
@@ -1208,14 +1208,14 @@ def login():
             "error": "Invalid JSON body"
         }), 400
 
-    # 3. Ensure JSON is an object
+    # 3. Validate JSON structure
     if not isinstance(data, dict):
         return jsonify({
             "success": False,
             "error": "Invalid request data"
         }), 400
 
-    # 4. Validate email data type
+    # 4. Validate email type
     email = data.get("email")
 
     if not isinstance(email, str):
@@ -1232,20 +1232,22 @@ def login():
             "error": "Email is required"
         }), 400
 
-    # 5. Basic email validation
+    # 5. Validate email format
+    email_pattern = (
+        r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+"
+        r"@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
+    )
+
     if (
         len(email) > 254
-        or not re.fullmatch(
-            r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
-            email
-        )
+        or not re.fullmatch(email_pattern, email)
     ):
         return jsonify({
             "success": False,
             "error": "Enter a valid email address"
         }), 400
 
-    # 6. Validate password data type
+    # 6. Validate password
     password = data.get("password")
 
     if not isinstance(password, str) or not password:
@@ -1254,23 +1256,31 @@ def login():
             "error": "Password is required"
         }), 400
 
-    # 7. Protect bcrypt from oversized passwords
-    password_bytes = password.encode("utf-8")
+    # 7. Encode password safely
+    try:
+        password_bytes = password.encode("utf-8")
 
+    except UnicodeError:
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
+
+    # 8. Enforce bcrypt's 72-byte limit
     if len(password_bytes) > 72:
         return jsonify({
             "success": False,
             "error": "Invalid email or password"
         }), 401
 
-    # 8. Check Supabase availability
+    # 9. Check database availability
     if supabase is None:
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # 9. Fetch user from Supabase
+    # 10. Retrieve account
     try:
         response = (
             supabase
@@ -1291,25 +1301,17 @@ def login():
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # 10. Prepare dummy hash for timing protection
-    # This helps make unknown-email attempts perform bcrypt work too.
-    if not hasattr(login, "_dummy_hash"):
-
-        login._dummy_hash = bcrypt.hashpw(
-            b"D4D-dummy-password",
-            bcrypt.gensalt(rounds=12)
-        )
-
-    dummy_hash = login._dummy_hash
-
-    # 11. Handle unknown accounts
+    # 11. Unknown account: perform dummy bcrypt verification
     if not user:
 
         try:
-            bcrypt.checkpw(password_bytes, dummy_hash)
+            bcrypt.checkpw(
+                password_bytes,
+                D4D_DUMMY_PASSWORD_HASH
+            )
 
         except Exception:
-            logger.exception("Dummy password verification failed")
+            logger.exception("Dummy bcrypt verification failed")
 
             return jsonify({
                 "success": False,
@@ -1324,59 +1326,81 @@ def login():
     # 12. Retrieve stored password hash
     hashed = user.get("password")
 
-    if not hashed or not isinstance(hashed, str):
+    # 13. Validate stored bcrypt hash
+    if (
+        not isinstance(hashed, str)
+        or not BCRYPT_HASH_PATTERN.fullmatch(hashed)
+    ):
 
-        logger.error("Account has no valid stored password hash")
+        logger.error(
+            "Login rejected: invalid or missing stored password hash."
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Login could not be completed. Please contact support."
-        }), 500
+        # Perform dummy verification to reduce timing differences.
+        try:
+            bcrypt.checkpw(
+                password_bytes,
+                D4D_DUMMY_PASSWORD_HASH
+            )
 
-    # 13. Verify password
-    try:
-
-        if not bcrypt.checkpw(
-            password_bytes,
-            hashed.encode("utf-8")
-        ):
+        except Exception:
+            logger.exception("Dummy bcrypt verification failed")
 
             return jsonify({
                 "success": False,
-                "error": "Invalid email or password"
-            }), 401
+                "error": "Login could not be completed. Please try again."
+            }), 500
+
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
+
+    # 14. Verify password
+    try:
+        password_valid = bcrypt.checkpw(
+            password_bytes,
+            hashed.encode("ascii")
+        )
 
     except Exception:
-
-        logger.exception("Password verification failed")
+        logger.exception("Bcrypt password verification failed")
 
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # 14. Generate JWT
-    try:
+    if not password_valid:
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
 
+    # 15. Generate JWT
+    try:
         access_token = create_access_token(
             identity=email
         )
 
     except Exception:
-
-        logger.exception("JWT creation failed")
+        logger.exception("JWT generation failed")
 
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # 15. Successful login
+    # 16. Successful login
     return jsonify({
         "success": True,
         "access_token": access_token,
         "message": "Login successful"
-    }), 200    
+    }), 200
+
+
+
+          
 
 
 @app.route("/change-password", methods=["POST"])
