@@ -6,15 +6,11 @@ import cloudinary
 import cloudinary.uploader
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
-KENYA_TZ = ZoneInfo("Africa/Nairobi")
 from io import BytesIO
 import logging
 import json
 import threading
 import time
-
-
-
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -24,12 +20,13 @@ from werkzeug.datastructures import FileStorage
 from dotenv import load_dotenv
 from google import genai
 
-
-# supabase client (ensure package installed in your env)
+# Supabase
 from supabase import create_client, Client
 
-# pillow
+# Pillow
 from PIL import Image
+
+# JWT
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -37,44 +34,77 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 
+from mailjet_rest import Client as MailjetClient
+
+
 # -----------------------------
-# LOAD ENV
+# TIMEZONE
 # -----------------------------
+
+KENYA_TZ = ZoneInfo("Africa/Nairobi")
+
+
+# -----------------------------
+# LOAD ENVIRONMENT VARIABLES
+# -----------------------------
+
 load_dotenv()
 
 DEVICE_SECRET = os.environ.get("MACRO_DEVICE_SECRET")
-if not DEVICE_SECRET:
-    raise RuntimeError("MACRO_DEVICE_SECRET missing from environment variables")
 
-# ---------- logging ----------
+if not DEVICE_SECRET:
+    raise RuntimeError(
+        "MACRO_DEVICE_SECRET missing from environment variables"
+    )
+
+
+# -----------------------------
+# LOGGING
+# -----------------------------
+
 logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
-from mailjet_rest import Client
 
-# ---------- Mailjet (optional until credentials are available) ----------
+# -----------------------------
+# MAILJET CONFIGURATION
+# -----------------------------
+
 MAILJET_API_KEY = os.getenv("MAILJET_API_KEY")
 MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
 
 mailjet = None
 
 if MAILJET_API_KEY and MAILJET_SECRET_KEY:
-    mailjet = Client(
+
+    mailjet = MailjetClient(
         auth=(MAILJET_API_KEY, MAILJET_SECRET_KEY),
         version="v3.1"
     )
 
+
 def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
+
     try:
+
         if mailjet is None:
-            logger.warning("Mailjet not configured. Email skipped.")
+            logger.warning(
+                "Mailjet not configured. Email skipped."
+            )
             return False
 
         sender_email = os.getenv("MAILJET_SENDER_EMAIL")
-        sender_name = os.getenv("MAILJET_SENDER_NAME", "Strategic Drivers")
+
+        sender_name = os.getenv(
+            "MAILJET_SENDER_NAME",
+            "Strategic Drivers"
+        )
 
         if not sender_email:
-            raise RuntimeError("Mailjet sender email missing")
+            raise RuntimeError(
+                "Mailjet sender email missing"
+            )
 
         data = {
             "Messages": [
@@ -97,189 +127,409 @@ def send_mailjet_html(to_email: str, subject: str, html: str) -> bool:
         result = mailjet.send.create(data=data)
 
         if result.status_code not in (200, 201):
-            logger.error("Mailjet send failed: %s", result.json())
+
+            logger.error(
+                "Mailjet send failed: %s",
+                result.json()
+            )
+
             return False
 
         return True
 
     except Exception as e:
-        logger.exception("Mailjet send error: %s", str(e))
+
+        logger.exception(
+            "Mailjet send error: %s",
+            str(e)
+        )
+
         return False
 
 
-# ----------------------------
-# HELPER: Validate date format
-# ----------------------------
+# -----------------------------
+# DATE VALIDATION
+# -----------------------------
+
 def validate_date(date_str):
+
     try:
-        datetime.strptime(date_str, "%Y-%m-%d")
+
+        datetime.strptime(
+            date_str,
+            "%Y-%m-%d"
+        )
+
         return True
+
     except (ValueError, TypeError):
+
         return False
 
 
+def parse_date(date_str: str):
+
+    try:
+
+        return datetime.strptime(
+            date_str,
+            "%Y-%m-%d"
+        ).date()
+
+    except (ValueError, TypeError):
+
+        return None
+
+
+# -----------------------------
+# PASSWORD HASHING
+# -----------------------------
 
 def hash_password(password: str) -> str:
-    if not password:
-        raise ValueError("Empty password cannot be hashed")
+
+    if not isinstance(password, str) or not password:
+        raise ValueError(
+            "Invalid password"
+        )
+
+    password_bytes = password.encode("utf-8")
+
+    # Standard bcrypt supports a maximum of 72 bytes.
+    if len(password_bytes) > 72:
+        raise ValueError(
+            "Password exceeds bcrypt's 72-byte limit"
+        )
 
     hashed = bcrypt.hashpw(
-        password.encode("utf-8"),
-        bcrypt.gensalt()
+        password_bytes,
+        bcrypt.gensalt(rounds=12)
     )
+
     return hashed.decode("utf-8")
+
+
+# -----------------------------
+# LOGIN SECURITY CONFIGURATION
+# -----------------------------
+
+# Dummy bcrypt hash.
+# Generated once per application worker.
+# Used to reduce timing differences during login.
+
+D4D_DUMMY_PASSWORD_HASH = bcrypt.hashpw(
+    b"D4D-dummy-password",
+    bcrypt.gensalt(rounds=12)
+)
+
+
+# Validate standard bcrypt hash formats.
+
+BCRYPT_HASH_PATTERN = re.compile(
+    r"^\$2[aby]\$(0[4-9]|[12][0-9]|3[01])\$[./A-Za-z0-9]{53}$"
+)
+
+
+# -----------------------------
+# FLASK APPLICATION
+# -----------------------------
 
 app = Flask(__name__)
 
-# Initialize rate limiting
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "10 per minute"],
-    storage_uri="memory://"
+
+# -----------------------------
+# APP CONFIGURATION
+# -----------------------------
+
+# Preserve image upload functionality.
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+
+# Flask secret key.
+app.config["SECRET_KEY"] = os.getenv(
+    "FLASK_SECRET_KEY"
 )
+
+if not app.config["SECRET_KEY"]:
+
+    raise RuntimeError(
+        "FLASK_SECRET_KEY missing from environment variables"
+    )
+
+
 # -----------------------------
 # JWT CONFIGURATION
 # -----------------------------
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
+
+app.config["JWT_SECRET_KEY"] = os.getenv(
+    "JWT_SECRET_KEY"
+)
+
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
+    hours=12
+)
 
 if not app.config["JWT_SECRET_KEY"]:
-    raise RuntimeError("JWT_SECRET_KEY missing from environment variables")
+
+    raise RuntimeError(
+        "JWT_SECRET_KEY missing from environment variables"
+    )
+
 
 jwt = JWTManager(app)
 
-# -----------------------------
-# APP CONFIG
-# -----------------------------
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024   # 20MB upload limit
-app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret")
 
-# Allow all origins by default (you can restrict later)
+# -----------------------------
+# CORS CONFIGURATION
+# -----------------------------
+
+# Preserving your existing CORS behaviour for now.
+# We will restrict allowed origins after verifying
+# all D4D frontend domains and API requests.
+
 CORS(app)
+
 
 # -----------------------------
 # RATE LIMITER
 # -----------------------------
+
+# Only ONE limiter instance.
+# Retains your existing in-memory storage.
+
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["10 per minute", "200 per day"]
+    app=app,
+    default_limits=[
+        "200 per day",
+        "10 per minute"
+    ],
+    storage_uri="memory://"
 )
-limiter.init_app(app)
+
 
 # -----------------------------
-# SUPABASE CONFIG
+# SUPABASE CONFIGURATION
 # -----------------------------
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
+
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.warning("Supabase URL or KEY missing from env (SUPABASE_URL / SUPABASE_KEY).")
 
-# create client (may raise if env invalid) — catch exceptions
+    logger.warning(
+        "Supabase URL or KEY missing from environment variables."
+    )
+
+
+# Create Supabase client.
+
 supabase: Client = None
+
 try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    if SUPABASE_URL and SUPABASE_KEY:
+
+        supabase = create_client(
+            SUPABASE_URL,
+            SUPABASE_KEY
+        )
+
 except Exception as e:
-    logger.exception("Failed to create Supabase client: %s", str(e))
-    # keep supabase as None; routes will return helpful error if used
+
+    logger.exception(
+        "Failed to create Supabase client: %s",
+        str(e)
+    )
 
 
+# -----------------------------
+# GEMINI CONFIGURATION
+# -----------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY missing from environment variables")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+    raise RuntimeError(
+        "GEMINI_API_KEY missing from environment variables"
+    )
+
+client = genai.Client(
+    api_key=GEMINI_API_KEY
+)
+
+
 # -----------------------------
-# CLOUDINARY CONFIG (optional)
+# CLOUDINARY CONFIGURATION
 # -----------------------------
+
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
+
 # -----------------------------
 # ALLOWED FILES
 # -----------------------------
-ALLOWED_EXT = {"jpg", "jpeg", "png"}
-ALLOWED_MIME = {"image/png", "image/jpeg"}
+
+ALLOWED_EXT = {
+    "jpg",
+    "jpeg",
+    "png"
+}
+
+ALLOWED_MIME = {
+    "image/png",
+    "image/jpeg"
+}
+
 
 def allowed_file(file: FileStorage):
+
     if not file or not getattr(file, "filename", None):
         return False
+
     ext = file.filename.rsplit(".", 1)[-1].lower()
-    return ext in ALLOWED_EXT and file.mimetype in ALLOWED_MIME
+
+    return (
+        ext in ALLOWED_EXT
+        and file.mimetype in ALLOWED_MIME
+    )
+
 
 # -----------------------------
 # REGEX VALIDATIONS
 # -----------------------------
-PHONE_REGEX = re.compile(r"^\+2547\d{8}$")  # +2547XXXXXXXX
-PLATE_REGEX = re.compile(r"^[A-Z]{1,3}\d{3,4}[A-Z]?$")
+
+PHONE_REGEX = re.compile(
+    r"^\+2547\d{8}$"
+)
+
+PLATE_REGEX = re.compile(
+    r"^[A-Z]{1,3}\d{3,4}[A-Z]?$"
+)
+
 
 def normalize_plate(plate: str) -> str:
+
     return plate.replace(" ", "").upper()
 
-def valid_plate(plate: str) -> bool:
-    return bool(PLATE_REGEX.match(plate))
 
-def normalize_phone(number: str) -> str:
-    """Convert MPESA phone formats to standard 2547xxxxxxx."""
+def valid_plate(plate: str) -> bool:
+
+    return bool(
+        PLATE_REGEX.fullmatch(plate)
+    )
+
+
+def normalize_phone(number: str):
+
     number = number.strip().replace(" ", "").replace("+", "")
+
     if number.startswith("0") and len(number) == 10:
+
         return "254" + number[1:]
+
     elif number.startswith("7") and len(number) == 9:
+
         return "254" + number
+
     elif number.startswith("254") and len(number) == 12:
+
         return number
+
     return number
 
+
+# -----------------------------
+# PASSWORD STRENGTH VALIDATION
+# -----------------------------
+
 def check_password_strength(password):
+
+    if not isinstance(password, str):
+        return False, "Invalid password."
+
     if len(password) < 8:
         return False, "Password must be at least 8 characters."
+
+    if len(password.encode("utf-8")) > 72:
+        return False, "Password is too long."
+
     if not re.search(r"[A-Z]", password):
         return False, "Add at least one uppercase letter."
+
     if not re.search(r"[a-z]", password):
         return False, "Add at least one lowercase letter."
+
     if not re.search(r"[0-9]", password):
         return False, "Add at least one number."
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+
+    if not re.search(
+        r"[!@#$%^&*(),.?\":{}|<>]",
+        password
+    ):
         return False, "Add at least one special character."
+
     return True, "Strong."
 
-def parse_date(date_str: str):
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d").date()
-    except:
-        return None
 
-
+# -----------------------------
+# DRIVER ID GENERATION
+# -----------------------------
 
 def generate_driver_id():
+
     return f"{random.randint(100000, 999999)}"
 
-# -----------------------------
-# IMAGE RESIZE FUNCTION USING PILLOW
-# -----------------------------
-def resize_image(file: FileStorage, max_size=(1024, 1024)):
-    try:
-        # PIL works with file-like objects
-        img = Image.open(file)
-        img.thumbnail(max_size)
-        buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
-        buffer.seek(0)
-        return buffer
-    except Exception as e:
-        raise ValueError(f"Image processing failed: {str(e)}")
 
 # -----------------------------
-# Heartbeat route (quick check)
+# IMAGE RESIZE FUNCTION
 # -----------------------------
+
+def resize_image(
+    file: FileStorage,
+    max_size=(1024, 1024)
+):
+
+    try:
+
+        img = Image.open(file)
+
+        img.thumbnail(max_size)
+
+        buffer = BytesIO()
+
+        img.save(
+            buffer,
+            format="JPEG",
+            quality=85
+        )
+
+        buffer.seek(0)
+
+        return buffer
+
+    except Exception as e:
+
+        raise ValueError(
+            f"Image processing failed: {str(e)}"
+        )
+
+
+# -----------------------------
+# HEARTBEAT ROUTE
+# -----------------------------
+
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({"status": "ok", "message": "drivers-backend running"}), 200
+
+    return jsonify({
+        "status": "ok",
+        "message": "drivers-backend running"
+    }), 200
 
 # ==========================================================# ROUTE: REGISTER NAME ONLY (TABLE: dere)
 # 
