@@ -934,20 +934,47 @@ def update_good_conduct():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+
+
+
 @app.route("/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def login():
+
+    # 1. Validate request content type
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "Content-Type must be application/json"
+        }), 400
+
+    # 2. Safely parse JSON
     try:
-        data = request.get_json(force=True, silent=False) or {}
-    except Exception as e:
-        logger.exception("Failed to parse JSON body: %s", str(e))
+        data = request.get_json(silent=False)
+
+    except Exception:
         return jsonify({
             "success": False,
             "error": "Invalid JSON body"
         }), 400
 
-    email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    # 3. Ensure JSON is an object
+    if not isinstance(data, dict):
+        return jsonify({
+            "success": False,
+            "error": "Invalid request data"
+        }), 400
+
+    # 4. Validate email data type
+    email = data.get("email")
+
+    if not isinstance(email, str):
+        return jsonify({
+            "success": False,
+            "error": "Email is required"
+        }), 400
+
+    email = email.strip().lower()
 
     if not email:
         return jsonify({
@@ -955,19 +982,45 @@ def login():
             "error": "Email is required"
         }), 400
 
-    if not password:
+    # 5. Basic email validation
+    if (
+        len(email) > 254
+        or not re.fullmatch(
+            r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+            email
+        )
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Enter a valid email address"
+        }), 400
+
+    # 6. Validate password data type
+    password = data.get("password")
+
+    if not isinstance(password, str) or not password:
         return jsonify({
             "success": False,
             "error": "Password is required"
         }), 400
 
+    # 7. Protect bcrypt from oversized passwords
+    password_bytes = password.encode("utf-8")
+
+    if len(password_bytes) > 72:
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
+
+    # 8. Check Supabase availability
     if supabase is None:
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # Fetch user
+    # 9. Fetch user from Supabase
     try:
         response = (
             supabase
@@ -980,62 +1033,100 @@ def login():
 
         user = response.data[0] if response.data else None
 
-    except Exception as e:
-        logger.exception("Supabase lookup error: %s", str(e))
+    except Exception:
+        logger.exception("Supabase login lookup failed")
+
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # Use the same response for an unknown email and an incorrect password
+    # 10. Prepare dummy hash for timing protection
+    # This helps make unknown-email attempts perform bcrypt work too.
+    if not hasattr(login, "_dummy_hash"):
+
+        login._dummy_hash = bcrypt.hashpw(
+            b"D4D-dummy-password",
+            bcrypt.gensalt(rounds=12)
+        )
+
+    dummy_hash = login._dummy_hash
+
+    # 11. Handle unknown accounts
     if not user:
+
+        try:
+            bcrypt.checkpw(password_bytes, dummy_hash)
+
+        except Exception:
+            logger.exception("Dummy password verification failed")
+
+            return jsonify({
+                "success": False,
+                "error": "Login could not be completed. Please try again."
+            }), 500
+
         return jsonify({
             "success": False,
             "error": "Invalid email or password"
         }), 401
 
+    # 12. Retrieve stored password hash
     hashed = user.get("password")
 
-    if not hashed:
-        logger.error("Login attempted for an account without a stored password hash.")
+    if not hashed or not isinstance(hashed, str):
+
+        logger.error("Account has no valid stored password hash")
+
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please contact support."
         }), 500
 
-    # Check password
+    # 13. Verify password
     try:
+
         if not bcrypt.checkpw(
-            password.encode("utf-8"),
+            password_bytes,
             hashed.encode("utf-8")
         ):
+
             return jsonify({
                 "success": False,
                 "error": "Invalid email or password"
             }), 401
 
-    except Exception as e:
-        logger.exception("Password verification error: %s", str(e))
+    except Exception:
+
+        logger.exception("Password verification failed")
+
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
-    # Create JWT token
+    # 14. Generate JWT
     try:
-        access_token = create_access_token(identity=email)
-    except Exception as e:
-        logger.exception("JWT creation error: %s", str(e))
+
+        access_token = create_access_token(
+            identity=email
+        )
+
+    except Exception:
+
+        logger.exception("JWT creation failed")
+
         return jsonify({
             "success": False,
             "error": "Login could not be completed. Please try again."
         }), 500
 
+    # 15. Successful login
     return jsonify({
         "success": True,
         "access_token": access_token,
         "message": "Login successful"
-    }), 200
+    }), 200    
 
 
 @app.route("/change-password", methods=["POST"])
