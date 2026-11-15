@@ -313,6 +313,26 @@ limiter = Limiter(
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# TEMPORARY: Identify Supabase key role safely
+import base64
+import json
+
+try:
+    parts = SUPABASE_KEY.split(".")
+    payload = parts[1]
+
+    payload += "=" * (-len(payload) % 4)
+
+    decoded = base64.urlsafe_b64decode(payload)
+    claims = json.loads(decoded)
+
+    logger.warning(
+        "SUPABASE KEY ROLE: %s",
+        claims.get("role", "UNKNOWN")
+    )
+
+except Exception:
+    logger.warning("Could not identify Supabase key role.")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
 
