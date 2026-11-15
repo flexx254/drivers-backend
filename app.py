@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from io import BytesIO
 import logging
 import json
+import base64
 import threading
 import time
 
@@ -314,8 +315,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 # TEMPORARY: Identify Supabase key role safely
-import base64
-import json
+
 
 try:
     parts = SUPABASE_KEY.split(".")
