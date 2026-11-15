@@ -551,256 +551,244 @@ def index():
         "message": "drivers-backend running"
     }), 200
 
-# ==========================================================# ROUTE: REGISTER NAME ONLY (TABLE: dere)
-# 
+# ==========================================================
+# ROUTE: REGISTER NAME ONLY (TABLE: dere)
+# ==========================================================
+
 @app.route("/register", methods=["POST"])
 def register():
 
-# =========================
-# REQUEST VALIDATION
-# =========================
+    # =========================
+    # REQUEST VALIDATION
+    # =========================
 
-if not request.is_json:
-    return jsonify({
-        "success": False,
-        "error": "Content-Type must be application/json"
-    }), 415
-
-try:
-    data = request.get_json(silent=True)
-
-except Exception:
-    data = None
-
-if not isinstance(data, dict):
-    return jsonify({
-        "success": False,
-        "error": "Invalid JSON body"
-    }), 400
-
-
-# =========================
-# FIELD TYPE VALIDATION
-# =========================
-
-fields = [
-    "name",
-    "email",
-    "phone_number",
-    "sacco",
-    "password",
-    "confirm"
-]
-
-for field in fields:
-    if field not in data or not isinstance(data[field], str):
+    if not request.is_json:
         return jsonify({
             "success": False,
-            "error": f"Invalid or missing {field} field"
+            "error": "Content-Type must be application/json"
+        }), 415
+
+    try:
+        data = request.get_json(silent=True)
+
+    except Exception:
+        data = None
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "success": False,
+            "error": "Invalid JSON body"
         }), 400
 
+    # =========================
+    # FIELD TYPE VALIDATION
+    # =========================
 
-# =========================
-# NORMALIZE INPUT
-# =========================
+    fields = [
+        "name",
+        "email",
+        "phone_number",
+        "sacco",
+        "password",
+        "confirm"
+    ]
 
-name = data["name"].strip()
-email = data["email"].strip().lower()
-phone = data["phone_number"].strip()
-sacco = data["sacco"].strip()
+    for field in fields:
+        if field not in data or not isinstance(data[field], str):
+            return jsonify({
+                "success": False,
+                "error": f"Invalid or missing {field} field"
+            }), 400
 
-# Do not strip passwords.
-# Spaces may legitimately be part of a password.
-password = data["password"]
-confirm = data["confirm"]
+    # =========================
+    # NORMALIZE INPUT
+    # =========================
 
+    name = data["name"].strip()
+    email = data["email"].strip().lower()
+    phone = data["phone_number"].strip()
+    sacco = data["sacco"].strip()
 
-# =========================
-# REQUIRED FIELDS
-# =========================
+    password = data["password"]
+    confirm = data["confirm"]
 
-if not name:
-    return jsonify({
-        "success": False,
-        "error": "Name is required"
-    }), 400
+    # =========================
+    # REQUIRED FIELDS
+    # =========================
 
-if not email:
-    return jsonify({
-        "success": False,
-        "error": "Email is required"
-    }), 400
+    if not name:
+        return jsonify({
+            "success": False,
+            "error": "Name is required"
+        }), 400
 
-if not phone:
-    return jsonify({
-        "success": False,
-        "error": "Phone number is required"
-    }), 400
+    if not email:
+        return jsonify({
+            "success": False,
+            "error": "Email is required"
+        }), 400
 
-if not sacco:
-    return jsonify({
-        "success": False,
-        "error": "Sacco is required"
-    }), 400
+    if not phone:
+        return jsonify({
+            "success": False,
+            "error": "Phone number is required"
+        }), 400
 
-if not password:
-    return jsonify({
-        "success": False,
-        "error": "Password is required"
-    }), 400
+    if not sacco:
+        return jsonify({
+            "success": False,
+            "error": "Sacco is required"
+        }), 400
 
-if not confirm:
-    return jsonify({
-        "success": False,
-        "error": "Confirm password is required"
-    }), 400
+    if not password:
+        return jsonify({
+            "success": False,
+            "error": "Password is required"
+        }), 400
 
+    if not confirm:
+        return jsonify({
+            "success": False,
+            "error": "Confirm password is required"
+        }), 400
 
-# =========================
-# FIELD LENGTH VALIDATION
-# =========================
+    # =========================
+    # FIELD LENGTH VALIDATION
+    # =========================
 
-if len(name) > 100:
-    return jsonify({
-        "success": False,
-        "error": "Name cannot exceed 100 characters"
-    }), 400
+    if len(name) > 100:
+        return jsonify({
+            "success": False,
+            "error": "Name cannot exceed 100 characters"
+        }), 400
 
-if len(email) > 254:
-    return jsonify({
-        "success": False,
-        "error": "Email cannot exceed 254 characters"
-    }), 400
+    if len(email) > 254:
+        return jsonify({
+            "success": False,
+            "error": "Email cannot exceed 254 characters"
+        }), 400
 
-if len(phone) != 13:
-    return jsonify({
-        "success": False,
-        "error": "Invalid phone number length"
-    }), 400
+    if len(phone) != 13:
+        return jsonify({
+            "success": False,
+            "error": "Invalid phone number length"
+        }), 400
 
-if len(sacco) > 100:
-    return jsonify({
-        "success": False,
-        "error": "Sacco name cannot exceed 100 characters"
-    }), 400
+    if len(sacco) > 100:
+        return jsonify({
+            "success": False,
+            "error": "Sacco name cannot exceed 100 characters"
+        }), 400
 
+    # =========================
+    # EMAIL FORMAT
+    # =========================
 
-# =========================
-# EMAIL FORMAT
-# =========================
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({
+            "success": False,
+            "error": "Invalid email address"
+        }), 400
 
-if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-    return jsonify({
-        "success": False,
-        "error": "Invalid email address"
-    }), 400
+    # =========================
+    # PHONE FORMAT
+    # =========================
 
+    if not re.match(r"^\+254\d{9}$", phone):
+        return jsonify({
+            "success": False,
+            "error": "Phone must be in +254XXXXXXXXX format"
+        }), 400
 
-# =========================
-# PHONE FORMAT
-# =========================
+    # =========================
+    # PASSWORD VALIDATION
+    # =========================
 
-if not re.match(r"^\+254\d{9}$", phone):
-    return jsonify({
-        "success": False,
-        "error": "Phone must be in +254XXXXXXXXX format"
-    }), 400
+    if password != confirm:
+        return jsonify({
+            "success": False,
+            "error": "Passwords do not match"
+        }), 400
 
+    if len(password.encode("utf-8")) > 72:
+        return jsonify({
+            "success": False,
+            "error": "Password exceeds the maximum supported length"
+        }), 400
 
-# =========================
-# PASSWORD VALIDATION
-# =========================
+    ok, msg = check_password_strength(password)
 
-if password != confirm:
-    return jsonify({
-        "success": False,
-        "error": "Passwords do not match"
-    }), 400
+    if not ok:
+        return jsonify({
+            "success": False,
+            "error": msg
+        }), 400
 
-if len(password.encode("utf-8")) > 72:
-    return jsonify({
-        "success": False,
-        "error": "Password exceeds the maximum supported length"
-    }), 400
+    # =========================
+    # HASH PASSWORD
+    # =========================
 
-ok, msg = check_password_strength(password)
+    try:
+        hashed = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
 
-if not ok:
-    return jsonify({
-        "success": False,
-        "error": msg
-    }), 400
-
-
-# =========================
-# HASH PASSWORD
-# =========================
-
-try:
-    hashed = bcrypt.hashpw(
-        password.encode("utf-8"),
-        bcrypt.gensalt()
-    ).decode("utf-8")
-
-except Exception:
-    logger.exception("Password hashing failed")
-
-    return jsonify({
-        "success": False,
-        "error": "Server error hashing password"
-    }), 500
-
-
-# =========================
-# DATABASE CLIENT CHECK
-# =========================
-
-if supabase is None:
-    logger.error("Supabase client is unavailable")
-
-    return jsonify({
-        "success": False,
-        "error": "Database service unavailable"
-    }), 500
-
-
-# =========================
-# INSERT INTO DERE
-# =========================
-
-try:
-
-    response = supabase.table("dere").insert({
-        "full_name": name,
-        "email": email,
-        "password": hashed,
-        "phone_number": phone,
-        "sacco": sacco
-    }).execute()
-
-    resp_error = getattr(response, "error", None)
-
-    if resp_error:
-        logger.error("Supabase insert error: %s", resp_error)
+    except Exception:
+        logger.exception("Password hashing failed")
 
         return jsonify({
             "success": False,
-            "error": "Database insert failed"
+            "error": "Server error hashing password"
         }), 500
 
-    return jsonify({
-        "success": True,
-        "message": "Registration successful. Check your email to continue."
-    }), 200
+    # =========================
+    # DATABASE CLIENT CHECK
+    # =========================
 
+    if supabase is None:
+        logger.error("Supabase client is unavailable")
 
-except Exception:
-    logger.exception("Unexpected Supabase registration error")
+        return jsonify({
+            "success": False,
+            "error": "Database service unavailable"
+        }), 500
 
-    return jsonify({
-        "success": False,
-        "error": "Internal server error during registration"
-    }), 500
+    # =========================
+    # INSERT INTO DERE
+    # =========================
+
+    try:
+        response = supabase.table("dere").insert({
+            "full_name": name,
+            "email": email,
+            "password": hashed,
+            "phone_number": phone,
+            "sacco": sacco
+        }).execute()
+
+        resp_error = getattr(response, "error", None)
+
+        if resp_error:
+            logger.error("Supabase insert error: %s", resp_error)
+
+            return jsonify({
+                "success": False,
+                "error": "Database insert failed"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "message": "Registration successful. Check your email to continue."
+        }), 200
+
+    except Exception:
+        logger.exception("Unexpected Supabase registration error")
+
+        return jsonify({
+            "success": False,
+            "error": "Internal server error during registration"
+        }), 500
 # ============================================================
 # ROUTE: SEND CONTINUE REGISTRATION EMAIL
 # ============================================================
