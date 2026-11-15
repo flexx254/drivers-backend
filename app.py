@@ -326,10 +326,11 @@ try:
     decoded = base64.urlsafe_b64decode(payload)
     claims = json.loads(decoded)
 
-    logger.warning(
-        "SUPABASE KEY ROLE: %s",
-        claims.get("role", "UNKNOWN")
-    )
+    print(
+    "SUPABASE KEY ROLE:",
+    claims.get("role", "UNKNOWN"),
+    flush=True
+)
 
 except Exception:
     logger.warning("Could not identify Supabase key role.")
