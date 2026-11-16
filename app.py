@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 from io import BytesIO
 import logging
 import json
-import base64
 import threading
 import time
 
@@ -314,26 +313,7 @@ limiter = Limiter(
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-# TEMPORARY: Identify Supabase key role safely
 
-
-try:
-    parts = SUPABASE_KEY.split(".")
-    payload = parts[1]
-
-    payload += "=" * (-len(payload) % 4)
-
-    decoded = base64.urlsafe_b64decode(payload)
-    claims = json.loads(decoded)
-
-    print(
-    "SUPABASE KEY ROLE:",
-    claims.get("role", "UNKNOWN"),
-    flush=True
-)
-
-except Exception:
-    logger.warning("Could not identify Supabase key role.")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
 
