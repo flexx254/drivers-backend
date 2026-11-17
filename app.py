@@ -312,13 +312,16 @@ limiter = Limiter(
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# Prefer Secret key; fall back to existing key
+ACTIVE_SUPABASE_KEY = SUPABASE_SECRET_KEY or SUPABASE_KEY
 
-if not SUPABASE_URL or not SUPABASE_KEY:
+if not SUPABASE_URL or not ACTIVE_SUPABASE_KEY:
 
     logger.warning(
-        "Supabase URL or KEY missing from environment variables."
+        "Supabase URL or API key missing from environment variables."
     )
 
 
@@ -328,11 +331,11 @@ supabase: Client = None
 
 try:
 
-    if SUPABASE_URL and SUPABASE_KEY:
+    if SUPABASE_URL and ACTIVE_SUPABASE_KEY:
 
         supabase = create_client(
             SUPABASE_URL,
-            SUPABASE_KEY
+            ACTIVE_SUPABASE_KEY
         )
 
 except Exception as e:
@@ -340,8 +343,7 @@ except Exception as e:
     logger.exception(
         "Failed to create Supabase client: %s",
         str(e)
-    )
-
+)
 
 # -----------------------------
 # GEMINI CONFIGURATION
