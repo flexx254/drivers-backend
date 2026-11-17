@@ -317,13 +317,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # Prefer Secret key; fall back to existing key
 ACTIVE_SUPABASE_KEY = SUPABASE_SECRET_KEY or SUPABASE_KEY
-print("D4D SUPABASE KEY SELECTED:", 
-      "SECRET KEY" if SUPABASE_SECRET_KEY else "LEGACY KEY",
-      flush=True)
-logger.info(
-    "Supabase credential selected: %s",
-    "SECRET KEY" if SUPABASE_SECRET_KEY else "LEGACY KEY"
-)
+
 if not SUPABASE_URL or not ACTIVE_SUPABASE_KEY:
 
     logger.warning(
