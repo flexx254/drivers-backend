@@ -1561,23 +1561,64 @@ def login():
           
 
 
+
+# ==========================================================
+# ROUTE: CHANGE PASSWORD
+# ==========================================================
+
 @app.route("/change-password", methods=["POST"])
 @jwt_required()
 def change_password():
-    try:
-        data = request.get_json(force=True, silent=False) or {}
-    except Exception:
+
+    # =========================
+    # REQUEST VALIDATION
+    # =========================
+
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "Content-Type must be application/json"
+        }), 415
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
         return jsonify({
             "success": False,
             "error": "Invalid JSON body"
         }), 400
 
-    current_password = data.get("current_password") or ""
-    new_password = data.get("new_password") or ""
-    confirm_password = data.get("confirm_password") or ""
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
+    confirm_password = data.get("confirm_password")
 
-    # Get logged-in user's email from JWT
+    if not all(isinstance(value, str) for value in (
+        current_password,
+        new_password,
+        confirm_password
+    )):
+        return jsonify({
+            "success": False,
+            "error": "All password fields must be provided as text"
+        }), 400
+
+    # =========================
+    # GET LOGGED-IN USER
+    # =========================
+
     email = get_jwt_identity()
+
+    if not isinstance(email, str) or not email.strip():
+        return jsonify({
+            "success": False,
+            "error": "Invalid authentication identity"
+        }), 401
+
+    email = email.strip().lower()
+
+    # =========================
+    # PASSWORD VALIDATION
+    # =========================
 
     if not current_password:
         return jsonify({
@@ -1597,7 +1638,6 @@ def change_password():
             "error": "New passwords do not match"
         }), 400
 
-    # Password requirements
     if len(new_password) < 8:
         return jsonify({
             "success": False,
@@ -1628,8 +1668,13 @@ def change_password():
             "error": "Password must contain at least one special character"
         }), 400
 
+    # =========================
+    # DATABASE AND PASSWORD CHECK
+    # =========================
+
     try:
-        # Find logged-in user
+
+        # Find logged-in user in dere table
         response = (
             supabase
             .table("dere")
@@ -1665,7 +1710,7 @@ def change_password():
                 "error": "Current password is incorrect"
             }), 401
 
-        # Prevent using the same password
+        # Prevent reusing current password
         if bcrypt.checkpw(
             new_password.encode("utf-8"),
             old_hash.encode("utf-8")
@@ -1675,18 +1720,36 @@ def change_password():
                 "error": "New password must be different from your current password"
             }), 400
 
-        # Hash new password
+        # =========================
+        # HASH NEW PASSWORD
+        # =========================
+
         new_hash = bcrypt.hashpw(
             new_password.encode("utf-8"),
             bcrypt.gensalt()
         ).decode("utf-8")
 
-        # Update password
-        supabase \
-            .table("dere") \
-            .update({"password": new_hash}) \
-            .eq("email", email) \
+        # =========================
+        # UPDATE DATABASE
+        # =========================
+
+        update_response = (
+            supabase
+            .table("dere")
+            .update({"password": new_hash})
+            .eq("email", email)
             .execute()
+        )
+
+        if not update_response.data:
+            return jsonify({
+                "success": False,
+                "error": "Password update could not be confirmed"
+            }), 500
+
+        # =========================
+        # SUCCESS
+        # =========================
 
         return jsonify({
             "success": True,
@@ -1694,12 +1757,15 @@ def change_password():
         }), 200
 
     except Exception as e:
+
         logger.exception("Change password error: %s", str(e))
 
         return jsonify({
             "success": False,
             "error": "Unable to change password"
         }), 500
+            
+            
 
         
 @app.route("/search-driver", methods=["GET"])
