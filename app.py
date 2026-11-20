@@ -1568,6 +1568,7 @@ def login():
 
 @app.route("/change-password", methods=["POST"])
 @jwt_required()
+@limiter.limit("5 per minute")
 def change_password():
 
     # =========================
