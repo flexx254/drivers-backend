@@ -948,55 +948,6 @@ def upload_documents():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
-# ============================================================
-# ROUTE: UPDATE ID NUMBER ONLY (JWT SECURE)
-# ============================================================
-
-
-@app.route("/update-id", methods=["POST"])
-@jwt_required()
-def update_id():
-    try:
-        # -----------------------------
-        # 1. Get email from JWT
-        # -----------------------------
-        email = get_jwt_identity()
-        if not email:
-            return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-        # -----------------------------
-        # 2. Get ID number from request
-        # -----------------------------
-        id_number = request.form.get("id_number", "").strip()
-        if not id_number:
-            return jsonify({"success": False, "error": "ID number is required"}), 400
-
-        print("Updating ID for:", email, "New ID:", id_number)
-
-        # -----------------------------
-        # 3. Update Supabase
-        # -----------------------------
-        update_resp = supabase.table("dere").update({
-            "id_number": id_number
-        }).eq("email", email).execute()
-
-        print("Supabase update response:", update_resp)
-
-        if getattr(update_resp, "error", None):
-            return jsonify({"success": False, "error": str(update_resp.error)}), 500
-
-        # -----------------------------
-        # 4. Success response
-        # -----------------------------
-        return jsonify({
-            "success": True,
-            "message": "ID number saved successfully."
-        }), 200
-
-    except Exception as e:
-        logger.exception("ID update error: %s", str(e))
-        return jsonify({"success": False, "error": str(e)}), 500
-
     
 
 # ============================================================
@@ -1132,7 +1083,79 @@ def update_number_plate():
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+@app.route("/update-id", methods=["POST"])
+@jwt_required()
+def update_id():
+    try:
+        # 1. Get authenticated user's email
+        email = get_jwt_identity()
 
+        if not email:
+            return jsonify({
+                "success": False,
+                "error": "Unauthorized"
+            }), 401
+
+        # 2. Validate ID number
+        id_number = request.form.get("id_number", "").strip()
+
+        if not id_number:
+            return jsonify({
+                "success": False,
+                "error": "ID number is required"
+            }), 400
+
+        if not id_number.isdigit() or len(id_number) not in (8, 9):
+            return jsonify({
+                "success": False,
+                "error": "Enter a valid 8-digit National ID or 9-digit Maisha Namba"
+            }), 400
+
+        # 3. Check whether ID belongs to another account
+        existing = (
+            supabase
+            .table("dere")
+            .select("email")
+            .eq("id_number", id_number)
+            .neq("email", email)
+            .limit(1)
+            .execute()
+        )
+
+        if existing.data:
+            return jsonify({
+                "success": False,
+                "error": "This ID number is already registered"
+            }), 409
+
+        # 4. Update authenticated user's record
+        update_resp = (
+            supabase
+            .table("dere")
+            .update({"id_number": id_number})
+            .eq("email", email)
+            .execute()
+        )
+
+        if not update_resp.data:
+            return jsonify({
+                "success": False,
+                "error": "Unable to update ID number. User record not found."
+            }), 404
+
+        # 5. Success
+        return jsonify({
+            "success": True,
+            "message": "ID number saved successfully."
+        }), 200
+
+    except Exception:
+        logger.exception("ID update error")
+
+        return jsonify({
+            "success": False,
+            "error": "An unexpected error occurred while saving your ID number."
+        }), 500
 
 # ============================================================
 # ROUTE: UPDATE PROFILE PICTURE (JWT SECURE)
