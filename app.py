@@ -1035,53 +1035,149 @@ def update_number_plate():
         # 1. Get email from JWT
         # -----------------------------
         email = get_jwt_identity()
+
         if not email:
-            return jsonify({"success": False, "error": "Unauthorized"}), 401
+            return jsonify({
+                "success": False,
+                "error": "Unauthorized"
+            }), 401
 
         # -----------------------------
-        # 2. Get number plate from request
+        # 2. Check database connection
+        # -----------------------------
+        if supabase is None:
+            return jsonify({
+                "success": False,
+                "error": "Database service unavailable"
+            }), 500
+
+        # -----------------------------
+        # 3. Get number plate from request
         # -----------------------------
         plate = request.form.get("number_plate", "").strip()
+
         if not plate:
-            return jsonify({"success": False, "error": "Number plate is required"}), 400
+            return jsonify({
+                "success": False,
+                "error": "Number plate is required"
+            }), 400
 
-        # Normalize and validate
+        # Normalize input
         normalized = normalize_plate(plate)
-        if not valid_plate(normalized):
-            return jsonify({"success": False, "error": "Invalid number plate format"}), 400
 
         # -----------------------------
-        # 3. Check for duplicate number plate (exclude this user)
+        # 4. Verify account exists in DERE
         # -----------------------------
-        duplicate = supabase.table("dere")\
-            .select("*")\
-            .eq("number_plate", normalized)\
-            .neq("email", email)\
+        account = (
+            supabase.table("dere")
+            .select("email")
+            .eq("email", email)
+            .limit(1)
             .execute()
+        )
+
+        if not account.data:
+            return jsonify({
+                "success": False,
+                "error": "Account not found"
+            }), 404
+
+        # -----------------------------
+        # 5. HANDLE NO CAR (NONE)
+        # -----------------------------
+        if normalized == "NONE":
+
+            # Check whether this account is an owner
+            owner = (
+                supabase.table("owners")
+                .select("email")
+                .eq("email", email)
+                .limit(1)
+                .execute()
+            )
+
+            if owner.data:
+                return jsonify({
+                    "success": False,
+                    "error": "Owners must provide a valid number plate"
+                }), 403
+
+            # Save NONE for driver
+            update_resp = (
+                supabase.table("dere")
+                .update({"number_plate": "NONE"})
+                .eq("email", email)
+                .execute()
+            )
+
+            if not update_resp.data:
+                return jsonify({
+                    "success": False,
+                    "error": "Unable to update number plate"
+                }), 500
+
+            return jsonify({
+                "success": True,
+                "number_plate": "NONE",
+                "message": "Car availability saved successfully"
+            }), 200
+
+        # -----------------------------
+        # 6. VALIDATE ACTUAL NUMBER PLATE
+        # -----------------------------
+        if not valid_plate(normalized):
+            return jsonify({
+                "success": False,
+                "error": "Invalid number plate format"
+            }), 400
+
+        # -----------------------------
+        # 7. CHECK DUPLICATE NUMBER PLATE
+        #    Across shared DERE table
+        # -----------------------------
+        duplicate = (
+            supabase.table("dere")
+            .select("email")
+            .eq("number_plate", normalized)
+            .neq("email", email)
+            .limit(1)
+            .execute()
+        )
 
         if duplicate.data:
-            return jsonify({"success": False, "error": "Number plate already exists"}), 400
+            return jsonify({
+                "success": False,
+                "error": "Number plate already exists"
+            }), 409
 
         # -----------------------------
-        # 4. Update number plate
+        # 8. UPDATE NUMBER PLATE
         # -----------------------------
-        update_resp = supabase.table("dere")\
-            .update({"number_plate": normalized})\
-            .eq("email", email)\
+        update_resp = (
+            supabase.table("dere")
+            .update({"number_plate": normalized})
+            .eq("email", email)
             .execute()
+        )
 
-        if getattr(update_resp, "error", None):
-            return jsonify({"success": False, "error": str(update_resp.error)}), 500
+        if not update_resp.data:
+            return jsonify({
+                "success": False,
+                "error": "Unable to update number plate"
+            }), 500
 
         return jsonify({
             "success": True,
             "number_plate": normalized
         }), 200
 
-    except Exception as e:
-        logger.exception("Number plate update error: %s", e)
-        return jsonify({"success": False, "error": "Server error"}), 500
+    except Exception:
+        logger.exception("Number plate update error")
 
+        return jsonify({
+            "success": False,
+            "error": "Server error while updating number plate"
+        }), 500
 
 @app.route("/update-id", methods=["POST"])
 @jwt_required()
