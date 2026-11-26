@@ -1089,7 +1089,7 @@ def update_number_plate():
 
             # Check whether this account is an owner
             owner = (
-                supabase.table("owners")
+                supabase.table("owner")
                 .select("email")
                 .eq("email", email)
                 .limit(1)
