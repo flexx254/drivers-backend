@@ -994,6 +994,17 @@ def update_driving_license():
         # 2. Get form data
         # -----------------------------
         license_expiry = request.form.get("license_expiry", "").strip()
+        
+        # Validate expiry date
+        if license_expiry:
+            try:
+                datetime.strptime(license_expiry, "%Y-%m-%d")
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid licence expiry date. Use YYYY-MM-DD."
+                }), 400
+
         file = request.files.get("license")
 
         if not file:
@@ -1049,7 +1060,6 @@ def update_driving_license():
     except Exception as e:
         logger.exception("Driving license update error: %s", str(e))
         return jsonify({"success": False, "error": "Server error"}), 500
-
 # ============================================================
 # ROUTE: UPDATE NUMBER PLATE (JWT SECURE)
 # ============================================================
