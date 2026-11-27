@@ -509,34 +509,45 @@ def generate_driver_id():
 # -----------------------------
 
 def resize_image(
+def resize_image(
     file: FileStorage,
     max_size=(1024, 1024)
 ):
-
     try:
+        file.stream.seek(0)
 
-        img = Image.open(file)
+        with Image.open(file.stream) as img:
 
-        img.thumbnail(max_size)
+            # Correct image orientation
+            img = ImageOps.exif_transpose(img)
 
-        buffer = BytesIO()
+            # Load image data
+            img.load()
 
-        img.save(
-            buffer,
-            format="JPEG",
-            quality=85
-        )
+            # Resize while preserving aspect ratio
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-        buffer.seek(0)
+            # Convert to RGB for JPEG compatibility
+            if img.mode != "RGB":
+                img = img.convert("RGB")
 
-        return buffer
+            # Save optimized JPEG
+            buffer = BytesIO()
 
-    except Exception as e:
+            img.save(
+                buffer,
+                format="JPEG",
+                quality=85,
+                optimize=True
+            )
 
-        raise ValueError(
-            f"Image processing failed: {str(e)}"
-        )
+            buffer.seek(0)
 
+            return buffer
+
+    except Exception:
+        logger.exception("Image resizing failed")
+        raise ValueError("Invalid or unsupported image")
 
 # -----------------------------
 # HEARTBEAT ROUTE
