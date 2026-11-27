@@ -24,7 +24,7 @@ from google import genai
 from supabase import create_client, Client
 
 # Pillow
-from PIL import Image
+from PIL import Image, ImageOps
 
 # JWT
 from flask_jwt_extended import (
