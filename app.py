@@ -417,7 +417,6 @@ def allowed_file(file: FileStorage):
 
     except Exception:
         return False
-
 # -----------------------------
 # REGEX VALIDATIONS
 # -----------------------------
