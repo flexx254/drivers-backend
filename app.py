@@ -396,11 +396,27 @@ def allowed_file(file: FileStorage):
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
 
-    return (
-        ext in ALLOWED_EXT
-        and file.mimetype in ALLOWED_MIME
-    )
+    if ext not in ALLOWED_EXT:
+        return False
 
+    if file.mimetype not in ALLOWED_MIME:
+        return False
+
+    try:
+        file.stream.seek(0)
+
+        with Image.open(file.stream) as img:
+            if img.format not in ("JPEG", "PNG"):
+                return False
+
+            img.verify()
+
+        file.stream.seek(0)
+
+        return True
+
+    except Exception:
+        return False
 
 # -----------------------------
 # REGEX VALIDATIONS
