@@ -507,7 +507,7 @@ def generate_driver_id():
 # IMAGE RESIZE FUNCTION
 # -----------------------------
 
-def resize_image(
+
 def resize_image(
     file: FileStorage,
     max_size=(1024, 1024)
