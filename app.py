@@ -1478,16 +1478,40 @@ def update_good_conduct():
         if not file:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
 
+        # -----------------------------
+        # 3. Validate expiry date
+        # -----------------------------
+        if not gc_expiry:
+            return jsonify({
+                "success": False,
+                "error": "Good conduct certificate expiry date is required"
+            }), 400
+
+        try:
+            datetime.strptime(gc_expiry, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Invalid good conduct expiry date. Use YYYY-MM-DD."
+            }), 400
+
+        # -----------------------------
+        # 4. Validate uploaded file
+        # -----------------------------
         if not allowed_file(file):
             return jsonify({"success": False, "error": "Invalid file format. Use JPG or PNG"}), 400
 
         # -----------------------------
-        # 3. Resize & upload
+        # 5. Resize & upload
         # -----------------------------
         try:
             resized_buffer = resize_image(file)
-            upload_resp = cloudinary.uploader.upload(resized_buffer, folder="driver_docs")
+            upload_resp = cloudinary.uploader.upload(
+                resized_buffer,
+                folder="driver_docs"
+            )
             gc_url = upload_resp.get("secure_url")
+
         except Exception as e:
             logger.exception("Good conduct processing/upload error: %s", e)
             return jsonify({"success": False, "error": "File upload failed"}), 500
@@ -1496,7 +1520,7 @@ def update_good_conduct():
             return jsonify({"success": False, "error": "Cloudinary did not return a URL"}), 500
 
         # -----------------------------
-        # 4. Save to Supabase
+        # 6. Save to Supabase
         # -----------------------------
         update_resp = supabase.table("dere").update({
             "good_conduct_url": gc_url,
@@ -1507,7 +1531,7 @@ def update_good_conduct():
             return jsonify({"success": False, "error": "Database update failed"}), 500
 
         # -----------------------------
-        # 5. SUCCESS
+        # 7. SUCCESS
         # -----------------------------
         return jsonify({
             "success": True,
@@ -1518,8 +1542,6 @@ def update_good_conduct():
     except Exception as e:
         logger.exception("Good conduct upload error: %s", e)
         return jsonify({"success": False, "error": "Server error"}), 500
-
-
 
 
 
